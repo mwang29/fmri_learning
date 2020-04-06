@@ -3,9 +3,14 @@ import scipy.io as sio
 import torch
 from torch import nn, optim
 from sklearn.preprocessing import StandardScaler
+import sklearn.datasets
+import sklearn.decomposition
 
 
-def get_data():
+def get_data(nComp=None):
+    '''
+    Navigates through file tree and extracts FCs with optional reconstruction
+    '''
     fname = '../data/100_unrelated.csv'
     subjectids = np.loadtxt(fname, dtype=np.int)
     nSubj = len(subjectids)
@@ -32,7 +37,7 @@ def get_data():
             task_matrices.append(A_orig)
         # This is the 100 by 374 by 374 matrices of 100 unrelated subjects
         task_matrices = np.array(task_matrices).reshape(len(subjectids), -1)
-        M[task] = task_matrices
+        M[task] = pca_recon(task_matrices, nComp=nComp)
 
     all_FC = np.hstack((M['rfMRI_REST1_LR'], M['rfMRI_REST1_RL'],
                         M['tfMRI_EMOTION_LR'], M['tfMRI_EMOTION_RL'],
@@ -45,7 +50,27 @@ def get_data():
     return all_FC, nSubj
 
 
+def pca_recon(FC, nComp=None):
+    '''
+    Reconstructs FC based on number of principle components
+    '''
+    if nComp is None:
+        return FC
+    mu = np.mean(FC, axis=0)
+    pca_rest = sklearn.decomposition.PCA()
+    pca_rest.fit(FC)
+
+    SCORES = pca_rest.transform(FC)[:, :nComp]
+    COEFFS = pca_rest.components_[:nComp, :]
+    FC_recon = np.dot(SCORES, COEFFS)
+    FC_recon += mu
+    return FC_recon
+
+
 def prepare_data(all_FC, nSubj):
+    '''
+    Prepares labels and train, val and test data from raw data
+    '''
     labels = torch.tensor(np.repeat(np.arange(0, 8), nSubj * 2))
     indices = np.random.permutation(labels.shape[0])
     train_idx = indices[:int(0.6 * labels.shape[0])]
@@ -80,6 +105,10 @@ def prepare_data(all_FC, nSubj):
 
 
 def build_model(sizes, lr):
+    '''
+    Given layer sizes and learning rate, builds model.
+    Can change NN architecture here directly in nn.Sequential
+    '''
     model = nn.Sequential(nn.Linear(sizes[0], sizes[1]),
                           nn.BatchNorm1d(sizes[1]),
                           nn.ReLU(),
@@ -99,7 +128,10 @@ def build_model(sizes, lr):
 
 
 def train_model(model, opt, loss_fn, train_loader, val_loader,
-                test_loader, max_epochs, n_epochs_stop, history):
+                max_epochs, n_epochs_stop, history):
+    '''
+    Trains model with specified parameters and returns trained model
+    '''
     early_stop = False
     min_val_loss = np.Inf
     for epoch in range(max_epochs):
@@ -177,6 +209,10 @@ def train_model(model, opt, loss_fn, train_loader, val_loader,
 
 
 def test_model(model, test_loader):
+    '''
+    After trained model is returned, this function tests the accuracy
+    on novel data. Returns test accuracy of a model.
+    '''
     model.eval()
     num_correct = 0
     num_examples = 0
@@ -206,13 +242,21 @@ if __name__ == '__main__':
     else:
         print("No GPU detected. Will use CPU for training.")
 
-    all_FC, nSubj = get_data()
+    nComps = None
+
+    # Get data from file tree
+    all_FC, nSubj = get_data(nComps)
+    # Prepare train, validation, and test data for NN
     all_FC, train_loader, val_loader, test_loader = prepare_data(all_FC, nSubj)
+    # Size of input, hidden layer 1 and 2, and output # of classes
     sizes = [all_FC.shape[1], 2048, 128, 8]
+    # Maximum epochs of training, early stopping threshold, and learning rate
     max_epochs, n_epochs_stop, lr = 30, 5, 0.01
+    # Build model accordingly
     model, loss_fn, opt, history = build_model(sizes, lr)
     model = train_model(model, opt, loss_fn, train_loader, val_loader,
                         max_epochs, n_epochs_stop, history)
     accuracy = test_model(model, test_loader)
+    print(f'Test accuracy of model is {accuracy}')
 
 # Loop over epochs
