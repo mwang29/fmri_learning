@@ -2,10 +2,35 @@ import numpy as np
 import scipy.io as sio
 import torch
 from torch import nn, optim
-from sklearn.preprocessing import StandardScaler
+from torch.utils import data
+import torch.nn.functional as F
 import sklearn.datasets
 import sklearn.decomposition
 
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        self.conv1 = nn.Conv2d(1, 6, kernel_size=12)
+        self.conv2 = nn.Conv2d(6, 12, kernel_size=12)
+        self.conv2_bn = nn.BatchNorm2d(12)
+        self.conv2_drop = nn.Dropout2d()
+        self.fc1 = nn.Linear(15552, 128)
+        self.fc2 = nn.Linear(128, 8)
+
+    def forward(self, x):
+        x = F.relu(F.max_pool2d(self.conv1(x), (3,3)))
+        x = F.relu(F.max_pool2d(self.conv2_bn(self.conv2(x)), (3,3)))
+        x = x.view(-1, self.num_flat_features(x))
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+    
+    def num_flat_features(self, x):
+        size = x.size()[1:]  # all dimensions except the batch dimension
+        num_features = 1
+        for s in size:
+            num_features *= s
+        return num_features
 
 def get_data(nComp=None):
     '''
@@ -32,30 +57,34 @@ def get_data(nComp=None):
             mat = sio.loadmat(filename, squeeze_me=True,
                               struct_as_record=False)
             A_orig = mat['FC']
-            A_orig = (A_orig + A_orig.T) / 2
             np.fill_diagonal(A_orig, 0)
             task_matrices.append(A_orig)
-        # This is the 100 by 374 by 374 matrices of 100 unrelated subjects
-        task_matrices = np.array(task_matrices).reshape(len(subjectids), -1)
-        M[task] = pca_recon(task_matrices, nComp=nComp)
-
-    all_FC = np.hstack((M['rfMRI_REST1_LR'], M['rfMRI_REST1_RL'],
-                        M['tfMRI_EMOTION_LR'], M['tfMRI_EMOTION_RL'],
-                        M['tfMRI_GAMBLING_LR'], M['tfMRI_GAMBLING_RL'],
-                        M['tfMRI_LANGUAGE_LR'], M['tfMRI_LANGUAGE_RL'],
-                        M['tfMRI_MOTOR_LR'], M['tfMRI_MOTOR_RL'],
-                        M['tfMRI_RELATIONAL_LR'], M['tfMRI_RELATIONAL_RL'],
-                        M['tfMRI_SOCIAL_LR'], M['tfMRI_SOCIAL_RL'],
-                        M['tfMRI_WM_LR'], M['tfMRI_WM_RL'])).reshape(-1, M['tfMRI_WM_LR'].shape[1])
+        M[task] = np.array(task_matrices)
+    task_dict = {}
+    task_dict["Rest"] = np.concatenate((M['rfMRI_REST1_LR'],M['rfMRI_REST1_RL']))
+    task_dict["Emotion"] = np.concatenate((M['tfMRI_EMOTION_LR'],M['tfMRI_EMOTION_RL']))
+    task_dict["Gambling"] = np.concatenate((M['tfMRI_GAMBLING_LR'], M['tfMRI_GAMBLING_RL']))
+    task_dict["Language"] = np.concatenate((M['tfMRI_LANGUAGE_LR'], M['tfMRI_LANGUAGE_RL']))
+    task_dict["Motor"] = np.concatenate((M['tfMRI_MOTOR_LR'], M['tfMRI_MOTOR_RL']))
+    task_dict["Relational"] = np.concatenate(( M['tfMRI_RELATIONAL_LR'], M['tfMRI_RELATIONAL_RL']))
+    task_dict["Social"] = np.concatenate((M['tfMRI_SOCIAL_LR'], M['tfMRI_SOCIAL_RL']))
+    task_dict["WM"] = np.concatenate((M['tfMRI_WM_LR'], M['tfMRI_WM_RL']))
+    
+    for key in task_dict.keys():
+        task_dict[key] = pca_recon(task_dict[key], pctComp=pctComp)
+        print(f"Reconstructed {key}")
+    all_FC = np.concatenate(tuple(task_dict.values()))
     return all_FC, nSubj
 
 
-def pca_recon(FC, nComp=None):
+def pca_recon(FC, pctComp=None):
     '''
     Reconstructs FC based on number of principle components
     '''
-    if nComp is None:
+    if pctComp is None:
         return FC
+    FC = np.reshape(FC, (FC.shape[0], -1))
+    nComp = int(FC.shape[0] * pctComp)
     mu = np.mean(FC, axis=0)
     pca_rest = sklearn.decomposition.PCA()
     pca_rest.fit(FC)
@@ -64,6 +93,7 @@ def pca_recon(FC, nComp=None):
     COEFFS = pca_rest.components_[:nComp, :]
     FC_recon = np.dot(SCORES, COEFFS)
     FC_recon += mu
+    FC_recon = np.reshape(FC_recon, (FC.shape[0], 374, 374))
     return FC_recon
 
 
@@ -71,52 +101,41 @@ def prepare_data(all_FC, nSubj):
     '''
     Prepares labels and train, val and test data from raw data
     '''
-    labels = torch.tensor(np.repeat(np.arange(0, 8), nSubj * 2))
+    labels = torch.tensor(np.repeat(np.arange(0,8),nSubj*2), dtype=torch.long)
     indices = np.random.permutation(labels.shape[0])
-    train_idx = indices[:int(0.6 * labels.shape[0])]
-    val_idx = indices[int(0.6 * labels.shape[0]):int(0.8 * labels.shape[0])]
-    test_idx = indices[int(0.8 * labels.shape[0]):]
-    std_scale = StandardScaler().fit(all_FC[train_idx, :])
-    all_FC[train_idx, :] = std_scale.transform(all_FC[train_idx, :])
-    all_FC[val_idx, :] = std_scale.transform(all_FC[val_idx, :])
-    all_FC[test_idx, :] = std_scale.transform(all_FC[test_idx, :])
-    all_FC = torch.Tensor(all_FC)
+    train_idx = indices[:int(0.6*labels.shape[0])]
+    val_idx = indices[int(0.6*labels.shape[0]):int(0.8*labels.shape[0])]
+    test_idx = indices[int(0.8*labels.shape[0]):]
+    train_mean = np.mean(all_FC[train_idx])
+    train_std = np.std(all_FC[train_idx])
+    train_data = torch.FloatTensor((all_FC[train_idx] - train_mean) / train_std)
+    val_data = torch.FloatTensor((all_FC[val_idx] - train_mean) / train_std)
+    test_data = torch.FloatTensor((all_FC[test_idx] - train_mean) / train_std)
+    
+    train_data = train_data.view(train_data.shape[0], -1, train_data.shape[1], train_data.shape[2])
+    val_data = val_data.view(val_data.shape[0], -1, val_data.shape[1], val_data.shape[2])
+    test_data = test_data.view(test_data.shape[0], -1, test_data.shape[1], test_data.shape[2])
 
-    train_data = []
-    for i in train_idx:
-        train_data.append([all_FC[i], labels[i]])
+    train_dataset = data.TensorDataset(train_data,labels[train_idx]) # create your datset
+    val_dataset = data.TensorDataset(val_data,labels[val_idx]) # create your datset
+    test_dataset = data.TensorDataset(test_data,labels[test_idx]) # create your datset
 
-    val_data = []
-    for i in val_idx:
-        val_data.append([all_FC[i], labels[i]])
-
-    test_data = []
-    for i in test_idx:
-        test_data.append([all_FC[i], labels[i]])
-
-    train_loader = torch.utils.data.DataLoader(
-        train_data, shuffle=True, batch_size=100)
-    val_loader = torch.utils.data.DataLoader(
-        val_data, shuffle=True, batch_size=100)
-    test_loader = torch.utils.data.DataLoader(
-        test_data, shuffle=True, batch_size=100)
-
-    return all_FC, train_loader, val_loader, test_loader
+    train_loader = data.DataLoader(train_dataset, batch_size=80) # create your dataloader
+    val_loader = data.DataLoader(val_dataset, batch_size=80) # create your dataloader
+    test_loader = data.DataLoader(test_dataset, batch_size=80) # create your dataloader
 
 
-def build_model(sizes, lr):
+    return train_loader, val_loader, test_loader
+
+
+def build_model(lr):
     '''
     Given layer sizes and learning rate, builds model.
     Can change NN architecture here directly in nn.Sequential
     '''
-    model = nn.Sequential(nn.Linear(sizes[0], sizes[1]),
-                          nn.BatchNorm1d(sizes[1]),
-                          nn.ReLU(),
-                          nn.Dropout(),
-                          nn.Linear(sizes[1], sizes[2]),
-                          nn.BatchNorm1d(sizes[2]),
-                          nn.ReLU(),
-                          nn.Linear(sizes[2], sizes[3]))
+    model = Net()
+    if use_cuda:
+        model = model.cuda()
     loss_fn = nn.CrossEntropyLoss()
     opt = optim.SGD(model.parameters(), lr=lr)
     history = {}
@@ -137,14 +156,15 @@ def train_model(model, opt, loss_fn, train_loader, val_loader,
     for epoch in range(max_epochs):
         # Training
         model.train()
-        train_loss = 0.0
-        num_train_correct = 0
+        train_loss         = 0.0
+        num_train_correct  = 0
         num_train_examples = 0
         for local_batch, local_labels in train_loader:
             # Transfer to GPU
             if use_cuda:
-                local_batch, local_labels = local_batch.to(
-                    device), local_labels.to(device)
+                local_batch, local_labels = local_batch.to(device), local_labels.to(device)
+
+
 
             opt.zero_grad()
             output = model(local_batch)
@@ -153,33 +173,30 @@ def train_model(model, opt, loss_fn, train_loader, val_loader,
             opt.step()
 
             train_loss += loss.data.item() * local_batch.size(0)
-            num_train_correct += (torch.max(output, 1)
-                                  [1] == local_labels).sum().item()
+            num_train_correct  += (torch.max(output, 1)[1] == local_labels).sum().item()
             num_train_examples += local_batch.shape[0]
 
             train_acc = num_train_correct / num_train_examples
-            train_loss = train_loss / len(train_loader.dataset)
+            train_loss  = train_loss / len(train_loader.dataset)
 
         # Validation
         model.eval()
-        val_loss = 0.0
-        num_val_correct = 0
+        val_loss       = 0.0
+        num_val_correct  = 0
         num_val_examples = 0
         with torch.set_grad_enabled(False):
             for local_batch, local_labels in val_loader:
                 # Transfer to GPU
                 if use_cuda:
-                    local_batch, local_labels = local_batch.to(
-                        device), local_labels.to(device)
+                    local_batch, local_labels = local_batch.to(device), local_labels.to(device)
                 output = model(local_batch)
                 loss = loss_fn(output, local_labels)
 
                 val_loss += loss.data.item() * local_batch.size(0)
-                num_val_correct += (torch.max(output, 1)
-                                    [1] == local_labels).sum().item()
+                num_val_correct  += (torch.max(output, 1)[1] == local_labels).sum().item()
                 num_val_examples += local_batch.shape[0]
 
-            val_acc = num_val_correct / num_val_examples
+            val_acc  = num_val_correct / num_val_examples
             val_loss = val_loss / len(val_loader.dataset)
 
             if val_loss < min_val_loss:
@@ -187,7 +204,7 @@ def train_model(model, opt, loss_fn, train_loader, val_loader,
                 min_val_loss = val_loss
             else:
                 epochs_no_improve += 1
-            # Check early stopping condition
+      # Check early stopping condition
             if epochs_no_improve == n_epochs_stop:
                 early_stop = print('Early stopping!')
                 break
@@ -238,22 +255,23 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if use_cuda else "cpu")
     if use_cuda:
         print("GPU detected. Will use GPU for training!")
-        cudnn.benchmark = True
+        torch.backends.cudnn.benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
 
-    nComps = None
+    pctComp = 0.50
 
     # Get data from file tree
-    all_FC, nSubj = get_data(nComps)
+    all_FC, nSubj = get_data(pctComp)
+    print("got data")
     # Prepare train, validation, and test data for NN
-    all_FC, train_loader, val_loader, test_loader = prepare_data(all_FC, nSubj)
-    # Size of input, hidden layer 1 and 2, and output # of classes
-    sizes = [all_FC.shape[1], 2048, 128, 8]
+    train_loader, val_loader, test_loader = prepare_data(all_FC, nSubj)
+    print("prepared data")
     # Maximum epochs of training, early stopping threshold, and learning rate
-    max_epochs, n_epochs_stop, lr = 30, 5, 0.01
+    max_epochs, n_epochs_stop, lr = 50, 5, 0.001
     # Build model accordingly
-    model, loss_fn, opt, history = build_model(sizes, lr)
+    model, loss_fn, opt, history = build_model(lr)
+    print("built model, now training")
     model = train_model(model, opt, loss_fn, train_loader, val_loader,
                         max_epochs, n_epochs_stop, history)
     accuracy = test_model(model, test_loader)
