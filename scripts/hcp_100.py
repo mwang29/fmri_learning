@@ -6,15 +6,16 @@ from torch.utils import data
 import torch.nn.functional as F
 import sklearn.datasets
 import sklearn.decomposition
+import csv
 
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 6, kernel_size=12)
-        self.conv2 = nn.Conv2d(6, 12, kernel_size=12)
+        self.conv1 = nn.Conv2d(1, 6, kernel_size=5)
+        self.conv2 = nn.Conv2d(6, 12, kernel_size=5)
         self.conv2_bn = nn.BatchNorm2d(12)
         self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(15552, 128)
+        self.fc1 = nn.Linear(18252, 128)
         self.fc2 = nn.Linear(128, 8)
 
     def forward(self, x):
@@ -32,11 +33,12 @@ class Net(nn.Module):
             num_features *= s
         return num_features
 
-def get_data(nComp=None):
+def get_data():
     '''
     Navigates through file tree and extracts FCs with optional reconstruction
     '''
     fname = '../data/100_unrelated.csv'
+    yeo_order = list(sio.loadmat("../data/yeo_RS7_N374.mat", squeeze_me=True, struct_as_record=False)['yeoOrder']-1)
     subjectids = np.loadtxt(fname, dtype=np.int)
     nSubj = len(subjectids)
     tasks = ['rfMRI_REST1_LR', 'rfMRI_REST1_RL', 'rfMRI_REST2_LR',
@@ -57,6 +59,7 @@ def get_data(nComp=None):
             mat = sio.loadmat(filename, squeeze_me=True,
                               struct_as_record=False)
             A_orig = mat['FC']
+            A_orig = A_orig[np.ix_(yeo_order, yeo_order)]
             np.fill_diagonal(A_orig, 0)
             task_matrices.append(A_orig)
         M[task] = np.array(task_matrices)
@@ -69,11 +72,9 @@ def get_data(nComp=None):
     task_dict["Relational"] = np.concatenate(( M['tfMRI_RELATIONAL_LR'], M['tfMRI_RELATIONAL_RL']))
     task_dict["Social"] = np.concatenate((M['tfMRI_SOCIAL_LR'], M['tfMRI_SOCIAL_RL']))
     task_dict["WM"] = np.concatenate((M['tfMRI_WM_LR'], M['tfMRI_WM_RL']))
-    
-    for key in task_dict.keys():
-        task_dict[key] = pca_recon(task_dict[key], pctComp=pctComp)
-        print(f"Reconstructed {key}")
+    del M
     all_FC = np.concatenate(tuple(task_dict.values()))
+    del task_dict
     return all_FC, nSubj
 
 
@@ -208,11 +209,11 @@ def train_model(model, opt, loss_fn, train_loader, val_loader,
             if epochs_no_improve == n_epochs_stop:
                 early_stop = print('Early stopping!')
                 break
-
-        print(f'Epoch {epoch + 1} / {max_epochs},'
-              f'train loss: {train_loss: 5.4f},'
-              f'train acc: {train_acc: 5.3f}, val loss: {val_loss: 5.3f},'
-              f'val acc: {val_acc: 5.3f}')
+        if epoch % 10 == 0:
+            print(f'Epoch {epoch + 1} / {max_epochs},'
+                  f'train loss: {train_loss: 5.4f},'
+                  f'train acc: {train_acc: 5.3f}, val loss: {val_loss: 5.3f},'
+                  f'val acc: {val_acc: 5.3f}')
 
         history['loss'].append(train_loss)
         history['val_loss'].append(val_loss)
@@ -222,7 +223,7 @@ def train_model(model, opt, loss_fn, train_loader, val_loader,
         if early_stop:
             print("Stopped")
             break
-    return model
+    return model, history
 
 
 def test_model(model, test_loader):
@@ -255,26 +256,41 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if use_cuda else "cpu")
     if use_cuda:
         print("GPU detected. Will use GPU for training!")
-        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn
+        benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
+    pctComp = list(np.arange(0.025, 1, step=0.025))
+    all_acc, all_loss = {}, {}
+    all_FC, nSubj = get_data()
+    for comp in pctComp:
+        # Get data from file tree
+        temp_FC = pca_recon(all_FC, pctComp=comp)
+        print(f"Reconstructed at {int(comp*100)}% components")
+        # Prepare train, validation, and test data for NN
+        train_loader, val_loader, test_loader = prepare_data(temp_FC, nSubj)
+        del temp_FC
+        # Maximum epochs of training, early stopping threshold, and learning rate
+        max_epochs, n_epochs_stop, lr = 200, 5, 0.001
+        # Build model accordingly
+        model, loss_fn, opt, history = build_model(lr)
+        print("Built model. Now training...")
+        model, history = train_model(model, opt, loss_fn, train_loader, val_loader,
+                            max_epochs, n_epochs_stop, history)
+        accuracy = test_model(model, test_loader)
+        all_acc[comp] = accuracy
+        all_loss[comp] = min(history['val_loss'])
+        del model, train_loader, val_loader, test_loader
+        print(f'Test accuracy of model is {accuracy}')
+    acc_filename = f'acc_{max_epochs}_{lr}.csv'
+    loss_filename = f'loss_{max_epochs}_{lr}.csv'
+    with open(f'../results/{acc_filename}', 'w', newline="") as csv_file:  
+        writer = csv.writer(csv_file)
+        for key, value in all_acc.items():
+            writer.writerow([key, value])
+    with open(f'../results/{loss_filename}', 'w', newline="") as csv_file:  
+        writer = csv.writer(csv_file)
+        for key, value in all_loss.items():
+            writer.writerow([key, value])
 
-    pctComp = 0.50
 
-    # Get data from file tree
-    all_FC, nSubj = get_data(pctComp)
-    print("got data")
-    # Prepare train, validation, and test data for NN
-    train_loader, val_loader, test_loader = prepare_data(all_FC, nSubj)
-    print("prepared data")
-    # Maximum epochs of training, early stopping threshold, and learning rate
-    max_epochs, n_epochs_stop, lr = 50, 5, 0.001
-    # Build model accordingly
-    model, loss_fn, opt, history = build_model(lr)
-    print("built model, now training")
-    model = train_model(model, opt, loss_fn, train_loader, val_loader,
-                        max_epochs, n_epochs_stop, history)
-    accuracy = test_model(model, test_loader)
-    print(f'Test accuracy of model is {accuracy}')
-
-# Loop over epochs
