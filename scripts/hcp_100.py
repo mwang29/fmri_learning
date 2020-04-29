@@ -311,7 +311,7 @@ if __name__ == '__main__':
             all_acc[comp] = accuracy
             all_loss[comp] = min(history['val_loss'])
             del model, train_loader, val_loader, test_loader
-            print(f'Test accuracy of model is {accuracy}')
+            print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
         # Store variables in case writing fails
         with open(f'objs{rep}.pkl', 'wb') as f:
             pickle.dump([all_acc, all_loss], f)
