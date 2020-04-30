@@ -81,7 +81,7 @@ def get_data():
                              M['tfMRI_SOCIAL_RL'], M['tfMRI_WM_RL']))
     nTest = test.shape[0]
     del M
-    all_FC = np.concatenate((test, retest))
+    all_FC = np.float32(np.concatenate((test, retest)))
     del test, retest
     return all_FC, nSubj, nTest
 
@@ -97,10 +97,10 @@ def pca_recon(FC, pctComp=None):
     mu = np.mean(FC, axis=0)
     pca_rest = sklearn.decomposition.PCA()
     pca_rest.fit(FC)
-
     SCORES = pca_rest.transform(FC)[:, :nComp]
     COEFFS = pca_rest.components_[:nComp, :]
     FC_recon = np.dot(SCORES, COEFFS)
+    del SCORES, COEFFS
     FC_recon += mu
     FC_recon = np.reshape(FC_recon, (FC.shape[0], 374, 374))
     return FC_recon
