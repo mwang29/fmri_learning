@@ -2,12 +2,10 @@ import numpy as np
 import pandas as pd
 import scipy.io as sio
 import torch
-import pickle
 from torch import nn, optim
 from torch.utils import data
+from scipy.linalg import fractional_matrix_power
 import torch.nn.functional as F
-import sklearn.datasets
-import sklearn.decomposition
 
 
 class Net(nn.Module):
@@ -83,27 +81,15 @@ def get_data():
     del M
     all_FC = np.concatenate((test, retest))
     del test, retest
-    return all_FC, nSubj, nTest
+    tangent_FC = tangential(all_FC)
+    return tangent_FC, nSubj, nTest
 
 
-def pca_recon(FC, pctComp=None):
-    '''
-    Reconstructs FC based on number of principle components
-    '''
-    if pctComp is None:
-        return FC
-    FC = np.reshape(FC, (FC.shape[0], -1))
-    nComp = int(FC.shape[0] * pctComp)
-    mu = np.mean(FC, axis=0)
-    pca_rest = sklearn.decomposition.PCA()
-    pca_rest.fit(FC)
-
-    SCORES = pca_rest.transform(FC)[:, :nComp]
-    COEFFS = pca_rest.components_[:nComp, :]
-    FC_recon = np.dot(SCORES, COEFFS)
-    FC_recon += mu
-    FC_recon = np.reshape(FC_recon, (FC.shape[0], 374, 374))
-    return FC_recon
+def tangential(all_FC):
+    Cg = np.mean(all_FC, axis=0)
+    Cg_inv_sq = fractional_matrix_power(Cg, -0.5)
+    tangent_FC = np.log(np.dot(Cg_inv_sq.dot(all_FC), Cg_inv_sq))
+    return tangent_FC
 
 
 def prepare_data(all_FC, nSubj, nTest):
@@ -121,6 +107,10 @@ def prepare_data(all_FC, nSubj, nTest):
     val_idx = train_val_idx[int(0.8 * train_val_idx.shape[0]):]
     train_idx = train_val_idx[:int(0.8 * train_val_idx.shape[0])]
     test_idx = indices[int(0.8 * nTest):]
+
+    train_idx = np.concatenate((train_idx, train_idx + nTest))
+    val_idx = np.concatenate((val_idx, val_idx + nTest))
+    test_idx = np.concatenate((test_idx, test_idx + nTest))
 
     train_mean = np.mean(all_FC[train_idx])
     train_std = np.std(all_FC[train_idx])
@@ -287,37 +277,32 @@ if __name__ == '__main__':
     else:
         print("No GPU detected. Will use CPU for training.")
     pctComp = list(np.arange(0.025, 1, step=0.025))
-    all_FC, nSubj, nTest = get_data()
-    replicates = np.arange(1, 6)
+    tangent_FC, nSubj, nTest = get_data()
+    replicates = np.arange(1, 51)
     for rep in replicates:
         all_acc, all_loss = {}, {}
-        for comp in pctComp:
-            # Get data from file tree
-            temp_FC = pca_recon(all_FC, pctComp=comp)
-            print(f"Reconstructed at {int(comp*100)}% components")
-            # Prepare train, validation, and test data for NN
-            train_loader, val_loader, test_loader = prepare_data(
-                temp_FC, nSubj, nTest)
-            del temp_FC
-            # Max epochs of training, early stopping threshold, learning rate
-            max_epochs, n_epochs_stop, lr = 200, 5, 0.001
-            # Build model accordingly
-            model, loss_fn, opt, history = build_model(lr)
-            print("Built model. Now training...")
-            model, history = train_model(model, opt, loss_fn, train_loader,
-                                         val_loader, max_epochs, n_epochs_stop,
-                                         history)
-            accuracy = test_model(model, test_loader)
-            all_acc[comp] = accuracy
-            all_loss[comp] = min(history['val_loss'])
-            del model, train_loader, val_loader, test_loader
-            print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
+        # Get data from file tree
+        # Prepare train, validation, and test data for NN
+        train_loader, val_loader, test_loader = prepare_data(
+            tangent_FC, nSubj, nTest)
+        del tangent_FC
+        # Max epochs of training, early stopping threshold, learning rate
+        max_epochs, n_epochs_stop, lr = 200, 5, 0.001
+        # Build model accordingly
+        model, loss_fn, opt, history = build_model(lr)
+        print("Built model. Now training...")
+        model, history = train_model(model, opt, loss_fn, train_loader,
+                                     val_loader, max_epochs, n_epochs_stop,
+                                     history)
+        accuracy = test_model(model, test_loader)
+        all_acc[rep] = accuracy
+        all_loss[rep] = min(history['val_loss'])
+        del model, train_loader, val_loader, test_loader
+        print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
         # Store variables in case writing fails
-        with open(f'objs{rep}.pkl', 'wb') as f:
-            pickle.dump([all_acc, all_loss], f)
-        # Write to dataframe and to csv
-        filename = f'../results/HCP100_E{max_epochs}_LR{lr}_R0_S1_Y1_{rep}.csv'
-        results = pd.DataFrame.from_dict(
-            all_acc, orient='index', columns=['Accuracy'])
-        results["Loss"] = pd.Series(all_loss)
-        results.to_csv(filename)
+    # Write to dataframe and to csv
+    filename = f'../results/HCP100_Tan_E{max_epochs}_LR{lr}_R0_S1_Y1_{rep}.csv'
+    results = pd.DataFrame.from_dict(
+        all_acc, orient='index', columns=['Accuracy'])
+    results["Loss"] = pd.Series(all_loss)
+    results.to_csv(filename)

@@ -122,6 +122,10 @@ def prepare_data(all_FC, nSubj, nTest):
     train_idx = train_val_idx[:int(0.8 * train_val_idx.shape[0])]
     test_idx = indices[int(0.8 * nTest):]
 
+    train_idx = np.concatenate((train_idx, train_idx + nTest))
+    val_idx = np.concatenate((val_idx, val_idx + nTest))
+    test_idx = np.concatenate((test_idx, test_idx + nTest))
+
     train_mean = np.mean(all_FC[train_idx])
     train_std = np.std(all_FC[train_idx])
     train_data = torch.FloatTensor(
@@ -288,7 +292,7 @@ if __name__ == '__main__':
         print("No GPU detected. Will use CPU for training.")
     pctComp = list(np.arange(0.025, 1, step=0.025))
     all_FC, nSubj, nTest = get_data()
-    replicates = np.arange(1, 6)
+    replicates = np.arange(1, 4)
     for rep in replicates:
         all_acc, all_loss = {}, {}
         for comp in pctComp:
