@@ -1,10 +1,11 @@
 import numpy as np
 import pandas as pd
+import scipy
 import scipy.io as sio
 import torch
 from torch import nn, optim
 from torch.utils import data
-from scipy.linalg import fractional_matrix_power
+from pyriemann.utils.mean import mean_covariance
 import torch.nn.functional as F
 
 
@@ -34,7 +35,7 @@ class Net(nn.Module):
         return num_features
 
 
-def get_data():
+def get_data(method):
     '''
     Navigates through file tree and extracts FCs with optional reconstruction
     '''
@@ -66,7 +67,7 @@ def get_data():
             A_orig = mat['FC']
             if yeo:
                 A_orig = A_orig[np.ix_(yeo_order, yeo_order)]
-            np.fill_diagonal(A_orig, 0)
+            np.fill_diagonal(A_orig, 1)
             task_matrices.append(A_orig)
         M[task] = np.array(task_matrices)
     test = np.concatenate((M['rfMRI_REST1_LR'], M['tfMRI_EMOTION_LR'],
@@ -81,14 +82,33 @@ def get_data():
     del M
     all_FC = np.concatenate((test, retest))
     del test, retest
-    tangent_FC = tangential(all_FC)
+    tangent_FC = tangential(all_FC, method)
     return tangent_FC, nSubj, nTest
 
 
-def tangential(all_FC):
-    Cg = np.mean(all_FC, axis=0)
-    Cg_inv_sq = fractional_matrix_power(Cg, -0.5)
-    tangent_FC = np.log(np.dot(Cg_inv_sq.dot(all_FC), Cg_inv_sq))
+def q1invm(q1, eig_thresh=0):
+    U, S, V = scipy.linalg.svd(q1)
+    s = np.diag(S)
+    s[s < eig_thresh] = eig_thresh
+    S = np.diag(s ** (-1 / 2))
+    Q1_inv_sqrt = U * S * np.transpose(V)
+    Q1_inv_sqrt = (Q1_inv_sqrt + np.transpose(Q1_inv_sqrt)) / 2
+    return Q1_inv_sqrt
+
+
+def qlog(q):
+    U, S, V = scipy.linalg.svd(q)
+    s = np.diag(S)
+    S = np.diag(np.log(s))
+    Q = U * S * np.transpose(V)
+    return Q
+
+
+def tangential(all_FC, method):
+    Cg = mean_covariance(all_FC, metric=method)
+    Q1_inv_sqrt = q1invm(Cg)
+    Q = Q1_inv_sqrt @ all_FC @ Q1_inv_sqrt
+    tangent_FC = np.array([qlog(a) for a in Q])
     return tangent_FC
 
 
@@ -268,6 +288,13 @@ def test_model(model, test_loader):
 if __name__ == '__main__':
 
     # GPU is available? If so, we use it.
+    reference_mats = ['riemann', 'logeuclid', 'euclid', 'identity',
+                      'logdet', 'wasserstein', 'ale', 'harmonic',
+                      'kullback_sym']
+    method = None
+    while method not in reference_mats:
+        method = input("Enter reference matrix for regularization: ")
+
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
     if use_cuda:
@@ -276,9 +303,8 @@ if __name__ == '__main__':
         benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
-    pctComp = list(np.arange(0.025, 1, step=0.025))
-    tangent_FC, nSubj, nTest = get_data()
-    replicates = np.arange(1, 51)
+    tangent_FC, nSubj, nTest = get_data(method)
+    replicates = np.arange(1, 2)
     for rep in replicates:
         all_acc, all_loss = {}, {}
         # Get data from file tree
@@ -301,7 +327,7 @@ if __name__ == '__main__':
         print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
         # Store variables in case writing fails
     # Write to dataframe and to csv
-    filename = f'../results/HCP100_Tan_E{max_epochs}_LR{lr}_R0_S1_Y1_{rep}.csv'
+    filename = f'../results/HCP100_Tan{method}_E{max_epochs}_LR{lr}_R0_S1_Y1_{rep}.csv'
     results = pd.DataFrame.from_dict(
         all_acc, orient='index', columns=['Accuracy'])
     results["Loss"] = pd.Series(all_loss)
