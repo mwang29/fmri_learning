@@ -315,7 +315,7 @@ if __name__ == '__main__':
         with open(f'objs{rep}.pkl', 'wb') as f:
             pickle.dump([all_acc, all_loss], f)
         # Write to dataframe and to csv
-        filename = f'../results/HCP100_E{max_epochs}_LR{lr}_R0_S1_Y1_{rep}.csv'
+        filename = f'../results/HCP100_E{max_epochs}_LR{lr}_R0_S0_Y1_{rep}.csv'
         results = pd.DataFrame.from_dict(
             all_acc, orient='index', columns=['Accuracy'])
         results["Loss"] = pd.Series(all_loss)
