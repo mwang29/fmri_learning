@@ -304,7 +304,7 @@ if __name__ == '__main__':
     else:
         print("No GPU detected. Will use CPU for training.")
     tangent_FC, nSubj, nTest = get_data(method)
-    replicates = np.arange(1, 2)
+    replicates = np.arange(1, 21)
     for rep in replicates:
         all_acc, all_loss = {}, {}
         # Get data from file tree
@@ -327,7 +327,7 @@ if __name__ == '__main__':
         print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
         # Store variables in case writing fails
     # Write to dataframe and to csv
-    filename = f'../results/HCP100_Tan{method}_E{max_epochs}_LR{lr}_R0_S1_Y1_{rep}.csv'
+    filename = f'../results/HCP100_Tan{method}_E{max_epochs}_LR{lr}_R1_S1_Y1_{rep}.csv'
     results = pd.DataFrame.from_dict(
         all_acc, orient='index', columns=['Accuracy'])
     results["Loss"] = pd.Series(all_loss)
