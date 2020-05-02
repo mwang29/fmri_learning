@@ -300,27 +300,24 @@ if __name__ == '__main__':
         print("No GPU detected. Will use CPU for training.")
     tangent_FC, nSubj = get_data(method)
     replicates = np.arange(1, 21)
+    all_acc, all_loss = {}, {}
+    # Get data from file tree
+    # Prepare train, validation, and test data for NN
+    train_loader, val_loader, test_loader = prepare_data(
+        tangent_FC, nSubj)
+    # Max epochs of training, early stopping threshold, learning rate
+    max_epochs, n_epochs_stop, lr = 200, 5, 0.001
+    # Build model accordingly
     for rep in replicates:
-        all_acc, all_loss = {}, {}
-        # Get data from file tree
-        # Prepare train, validation, and test data for NN
-        train_loader, val_loader, test_loader = prepare_data(
-            tangent_FC, nSubj)
-        del tangent_FC
-        # Max epochs of training, early stopping threshold, learning rate
-        max_epochs, n_epochs_stop, lr = 200, 5, 0.001
-        # Build model accordingly
-        model, loss_fn, opt, history = build_model(lr)
-        print("Built model. Now training...")
+	model, loss_fn, opt, history = build_model(lr)
+        print(f"Now training {rep}...")
         model, history = train_model(model, opt, loss_fn, train_loader,
                                      val_loader, max_epochs, n_epochs_stop,
                                      history)
         accuracy = test_model(model, test_loader)
         all_acc[rep] = accuracy
         all_loss[rep] = min(history['val_loss'])
-        del model, train_loader, val_loader, test_loader
         print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
-        # Store variables in case writing fails
     # Write to dataframe and to csv
     filename = f'../results/HCP100_Tan{method}_E{max_epochs}_LR{lr}_R1_S0_Y1_{rep}.csv'
     results = pd.DataFrame.from_dict(
