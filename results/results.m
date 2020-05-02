@@ -81,3 +81,7 @@ h = [p3(1);p4];
 legend(h, 'Random Indices', 'Subject Grouping') 
 axis square
 saveas(gcf,'pca_subject_grouping.png')
+
+% Random indices are better with lower mean and stdev
+
+%% Tangent space vs. Non tangent space 

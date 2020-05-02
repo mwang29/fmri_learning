@@ -309,7 +309,7 @@ if __name__ == '__main__':
     max_epochs, n_epochs_stop, lr = 200, 5, 0.001
     # Build model accordingly
     for rep in replicates:
-	model, loss_fn, opt, history = build_model(lr)
+        model, loss_fn, opt, history = build_model(lr)
         print(f"Now training {rep}...")
         model, history = train_model(model, opt, loss_fn, train_loader,
                                      val_loader, max_epochs, n_epochs_stop,

@@ -61,7 +61,6 @@ avg_subj_acc = mean(mean(subj_acc));
 avg_random_acc = mean(mean(random_acc));
 std_subj_acc = mean(std(subj_acc));
 std_random_acc = mean(std(random_acc));
-bar([avg_subj_acc, avg_random_acc; std_subj_acc std_random_acc
 
 fig1 = subplot(1,2,1);
 set(gcf, 'Position',  [100, 100, 1250, 500])
@@ -82,3 +81,7 @@ h = [p3(1);p4];
 legend(h, 'Random Indices', 'Subject Grouping') 
 axis square
 saveas(gcf,'pca_subject_grouping.png')
+
+% Random indices are better with lower mean and stdev
+
+%% Tangent space vs. Non tangent space 
