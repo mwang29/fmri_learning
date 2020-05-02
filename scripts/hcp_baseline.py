@@ -1,11 +1,9 @@
 import numpy as np
 import pandas as pd
-import scipy
 import scipy.io as sio
 import torch
 from torch import nn, optim
 from torch.utils import data
-from pyriemann.utils.mean import mean_covariance
 import torch.nn.functional as F
 
 
@@ -35,7 +33,7 @@ class Net(nn.Module):
         return num_features
 
 
-def get_data(method):
+def get_data():
     '''
     Navigates through file tree and extracts FCs with optional reconstruction
     '''
@@ -81,34 +79,7 @@ def get_data(method):
     del M
     all_FC = np.concatenate((test, retest))
     del test, retest
-    tangent_FC = tangential(all_FC, method)
-    return tangent_FC, nSubj
-
-
-def q1invm(q1, eig_thresh=0):
-    U, S, V = scipy.linalg.svd(q1)
-    s = np.diag(S)
-    s[s < eig_thresh] = eig_thresh
-    S = np.diag(s ** (-1 / 2))
-    Q1_inv_sqrt = U * S * np.transpose(V)
-    Q1_inv_sqrt = (Q1_inv_sqrt + np.transpose(Q1_inv_sqrt)) / 2
-    return Q1_inv_sqrt
-
-
-def qlog(q):
-    U, S, V = scipy.linalg.svd(q)
-    s = np.diag(S)
-    S = np.diag(np.log(s))
-    Q = U * S * np.transpose(V)
-    return Q
-
-
-def tangential(all_FC, method):
-    Cg = mean_covariance(all_FC, metric=method)
-    Q1_inv_sqrt = q1invm(Cg)
-    Q = Q1_inv_sqrt @ all_FC @ Q1_inv_sqrt
-    tangent_FC = np.array([qlog(a) for a in Q])
-    return tangent_FC
+    return all_FC, nSubj
 
 
 def prepare_data(all_FC, nSubj):
@@ -291,13 +262,13 @@ if __name__ == '__main__':
         benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
-    tangent_FC, nSubj = get_data(method)
+    all_FC, nSubj = get_data()
     replicates = np.arange(1, 21)
     all_acc, all_loss = {}, {}
     # Get data from file tree
     # Prepare train, validation, and test data for NN
     train_loader, val_loader, test_loader = prepare_data(
-        tangent_FC, nSubj)
+        all_FC, nSubj)
     # Max epochs of training, early stopping threshold, learning rate
     max_epochs, n_epochs_stop, lr = 200, 5, 0.001
     # Build model accordingly
@@ -312,7 +283,7 @@ if __name__ == '__main__':
         all_loss[rep] = min(history['val_loss'])
         print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
     # Write to dataframe and to csv
-    filename = f'../results/HCP100_Tan{method}_E{max_epochs}_LR{lr}_R1_S0_Y1_{rep}.csv'
+    filename = f'../results/HCP100_base_E{max_epochs}_LR{lr}_R1_S0_Y1_{rep}.csv'
     results = pd.DataFrame.from_dict(
         all_acc, orient='index', columns=['Accuracy'])
     results["Loss"] = pd.Series(all_loss)

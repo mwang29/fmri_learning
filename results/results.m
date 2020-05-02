@@ -85,3 +85,5 @@ saveas(gcf,'pca_subject_grouping.png')
 % Random indices are better with lower mean and stdev
 
 %% Tangent space vs. Non tangent space 
+tan_space = csvread('HCP100_Taneuclid_E200_LR0.001_R1_S0_Y1_20.csv',1,0);
+normal = 
