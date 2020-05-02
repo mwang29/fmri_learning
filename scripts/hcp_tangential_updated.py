@@ -78,12 +78,11 @@ def get_data(method):
                              M['tfMRI_GAMBLING_RL'], M['tfMRI_LANGUAGE_RL'],
                              M['tfMRI_MOTOR_RL'], M['tfMRI_RELATIONAL_RL'],
                              M['tfMRI_SOCIAL_RL'], M['tfMRI_WM_RL']))
-    nTest = test.shape[0]
     del M
     all_FC = np.concatenate((test, retest))
     del test, retest
     tangent_FC = tangential(all_FC, method)
-    return tangent_FC, nSubj, nTest
+    return tangent_FC, nSubj
 
 
 def q1invm(q1, eig_thresh=0):
@@ -112,7 +111,7 @@ def tangential(all_FC, method):
     return tangent_FC
 
 
-def prepare_data(all_FC, nSubj, nTest):
+def prepare_data(all_FC, nSubj):
     '''
     Prepares labels and train, val and test data from raw data
     '''
@@ -120,17 +119,13 @@ def prepare_data(all_FC, nSubj, nTest):
     labels = torch.tensor(
         np.tile(np.repeat(np.arange(0, 8), nSubj), 2), dtype=torch.long)
     # Randomly shuffled indices for test FCs
-    indices = np.random.permutation(nTest)
+    indices = np.random.permutation(all_FC.shape[0])
     # Take subsets of data for training, validation, test
-    train_val_idx = indices[:int(0.8 * nTest)]
+    train_val_idx = indices[:int(0.8 * all_FC.shape[0])]
     # Val, train, test indices
     val_idx = train_val_idx[int(0.8 * train_val_idx.shape[0]):]
     train_idx = train_val_idx[:int(0.8 * train_val_idx.shape[0])]
-    test_idx = indices[int(0.8 * nTest):]
-
-    train_idx = np.concatenate((train_idx, train_idx + nTest))
-    val_idx = np.concatenate((val_idx, val_idx + nTest))
-    test_idx = np.concatenate((test_idx, test_idx + nTest))
+    test_idx = indices[int(0.8 * all_FC.shape[0]):]
 
     train_mean = np.mean(all_FC[train_idx])
     train_std = np.std(all_FC[train_idx])
@@ -303,14 +298,14 @@ if __name__ == '__main__':
         benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
-    tangent_FC, nSubj, nTest = get_data(method)
+    tangent_FC, nSubj = get_data(method)
     replicates = np.arange(1, 21)
     for rep in replicates:
         all_acc, all_loss = {}, {}
         # Get data from file tree
         # Prepare train, validation, and test data for NN
         train_loader, val_loader, test_loader = prepare_data(
-            tangent_FC, nSubj, nTest)
+            tangent_FC, nSubj)
         del tangent_FC
         # Max epochs of training, early stopping threshold, learning rate
         max_epochs, n_epochs_stop, lr = 200, 5, 0.001
@@ -327,7 +322,7 @@ if __name__ == '__main__':
         print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
         # Store variables in case writing fails
     # Write to dataframe and to csv
-    filename = f'../results/HCP100_Tan{method}_E{max_epochs}_LR{lr}_R1_S1_Y1_{rep}.csv'
+    filename = f'../results/HCP100_Tan{method}_E{max_epochs}_LR{lr}_R1_S0_Y1_{rep}.csv'
     results = pd.DataFrame.from_dict(
         all_acc, orient='index', columns=['Accuracy'])
     results["Loss"] = pd.Series(all_loss)
