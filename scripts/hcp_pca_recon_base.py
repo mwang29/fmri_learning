@@ -285,38 +285,36 @@ if __name__ == '__main__':
         benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
-    pctComp = list(np.arange(0.025, 1, step=0.025))
+    comp = 0.025
     all_FC, nSubj = get_data()
-    replicates = np.arange(1, 4)
+    replicates = np.arange(1, 21)
+    all_acc, all_loss = {}, {}
+    comp = 0.025
+    # Get data from file tree
+    temp_FC = pca_recon(all_FC, pctComp=comp)
+    print(f"Reconstructed at {int(comp*100)}% components")
+    # Prepare train, validation, and test data for NN
+    train_loader, val_loader, test_loader = prepare_data(
+        temp_FC, nSubj)
+    del temp_FC
+
     for rep in replicates:
-        all_acc, all_loss = {}, {}
-        for comp in pctComp:
-            # Get data from file tree
-            temp_FC = pca_recon(all_FC, pctComp=comp)
-            print(f"Reconstructed at {int(comp*100)}% components")
-            # Prepare train, validation, and test data for NN
-            train_loader, val_loader, test_loader = prepare_data(
-                temp_FC, nSubj)
-            del temp_FC
-            # Max epochs of training, early stopping threshold, learning rate
-            max_epochs, n_epochs_stop, lr = 200, 5, 0.001
-            # Build model accordingly
-            model, loss_fn, opt, history = build_model(lr)
-            print("Built model. Now training...")
-            model, history = train_model(model, opt, loss_fn, train_loader,
-                                         val_loader, max_epochs, n_epochs_stop,
-                                         history)
-            accuracy = test_model(model, test_loader)
-            all_acc[comp] = accuracy
-            all_loss[comp] = min(history['val_loss'])
-            del model, train_loader, val_loader, test_loader
-            print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
-        # Store variables in case writing fails
-        with open(f'objs{rep}.pkl', 'wb') as f:
-            pickle.dump([all_acc, all_loss], f)
-        # Write to dataframe and to csv
-        filename = f'../results/HCP100_E{max_epochs}_LR{lr}_R0_S0_Y1_{rep}.csv'
-        results = pd.DataFrame.from_dict(
-            all_acc, orient='index', columns=['Accuracy'])
-        results["Loss"] = pd.Series(all_loss)
-        results.to_csv(filename)
+        # Max epochs of training, early stopping threshold, learning rate
+        max_epochs, n_epochs_stop, lr = 200, 5, 0.001
+        # Build model accordingly
+        model, loss_fn, opt, history = build_model(lr)
+        print("Built model. Now training...")
+        model, history = train_model(model, opt, loss_fn, train_loader,
+                                     val_loader, max_epochs, n_epochs_stop,
+                                     history)
+        accuracy = test_model(model, test_loader)
+        all_acc[rep] = accuracy
+        all_loss[rep] = min(history['val_loss'])
+        print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
+    # Store variables in case writing fails
+    # Write to dataframe and to csv
+    filename = f'../results/HCP100_recon_{comp}_E{max_epochs}_LR{lr}_R0_S0_Y1.csv'
+    results = pd.DataFrame.from_dict(
+        all_acc, orient='index', columns=['Accuracy'])
+    results["Loss"] = pd.Series(all_loss)
+    results.to_csv(filename)
