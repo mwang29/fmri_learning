@@ -86,4 +86,14 @@ saveas(gcf,'pca_subject_grouping.png')
 
 %% Tangent space vs. Non tangent space 
 tan_space = csvread('HCP100_Taneuclid_E200_LR0.001_R1_S0_Y1_20.csv',1,0);
-normal = 
+baseline = csvread('HCP100_base_E200_LR0.001_R1_S0_Y1_20.csv',1,0);
+pca_recon_opt = csvread('HCP100_recon_0.025_E200_LR0.001_R0_S0_Y1.csv',1,0);
+
+avg_tan = mean(tan_space(:,2));
+avg_base = mean(baseline(:,2));
+avg_recon = mean(pca_recon_opt(:,2));
+performance = [avg_base, avg_recon, avg_tan];
+bar(performance)
+set(gca,'xticklabel',{'Raw data', 'Recon at 2.5% PCs', 'Tangent Space'})
+text(1:length(performance),performance,num2str(performance',3),'vert','bottom','horiz','center'); 
+ylabel('Test accuracy')
