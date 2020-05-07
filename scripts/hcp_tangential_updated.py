@@ -81,6 +81,11 @@ def get_data(method):
     del M
     all_FC = np.concatenate((test, retest))
     del test, retest
+    if method == 'riemann':
+        eye_mat = np.eye(all_FC.shape[1])
+        scaling_mat = 0.1 * \
+            np.repeat(eye_mat[None, ...], all_FC.shape[0], axis=0)
+        all_FC += scaling_mat
     tangent_FC = tangential(all_FC, method)
     return tangent_FC, nSubj
 
@@ -281,6 +286,12 @@ def test_model(model, test_loader):
 
 
 if __name__ == '__main__':
+    reference_mats = ['riemann', 'logeuclid', 'euclid', 'identity',
+                      'logdet', 'wasserstein', 'ale', 'harmonic',
+                      'kullback_sym']
+    method = None
+    while method not in reference_mats:
+        method = input("Enter reference matrix for regularization: ")
 
     # GPU is available? If so, we use it.
     use_cuda = torch.cuda.is_available()
