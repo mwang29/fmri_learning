@@ -316,14 +316,15 @@ if __name__ == '__main__':
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
     if use_cuda:
-        print("GPU detected. Will use GPU for training!")
+        device_name = torch.cuda.get_device_name(0)
+        print(f"GPU detected: {device_name}!")
         torch.backends.cudnn
         benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
 
     # Navigate tree and get raw correlation FC matrices
-    print("Import all correlation matrices...", end=" ")
+    print("Importing all correlation matrices...", end=" ")
     all_FC, nSubj = get_data()
     print("All FCs successfully loaded!\n")
 
