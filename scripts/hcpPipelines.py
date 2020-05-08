@@ -109,16 +109,16 @@ def qlog(q):
 
 
 def tangential(all_FC, ref):
+    # Regularization for riemann
+    if ref == 'riemann':
+        eye_mat = np.eye(all_FC.shape[1])
+        scaling_mat = 0.1 * \
+            np.repeat(eye_mat[None, ...], all_FC.shape[0], axis=0)
+        all_FC += scaling_mat
     Cg = mean_covariance(all_FC, metric=ref)
     Q1_inv_sqrt = q1invm(Cg)
     Q = Q1_inv_sqrt @ all_FC @ Q1_inv_sqrt
     tangent_FC = np.array([qlog(a) for a in Q])
-    # Regularization for riemann
-    if ref == 'riemann':
-        eye_mat = np.eye(tangent_FC.shape[1])
-        scaling_mat = 0.1 * \
-            np.repeat(eye_mat[None, ...], tangent_FC.shape[0], axis=0)
-        tangent_FC += scaling_mat
     return tangent_FC
 
 
@@ -348,13 +348,14 @@ if __name__ == '__main__':
             while ref not in reference_mats:
                 if invalid > 0:
                     print(f"Choose from {reference_mats}")
-                ref = input("Enter reference matrix for regularization: ")
+                ref = input(
+                    "Enter reference matrix (press enter for options): ")
                 invalid += 1
             print("Regularizing the FCs...", end=" ")
             all_FC = tangential(all_FC, ref)
             print("done!\n")
         else:
-            tan = 0
+            ref = "NA"
 
     max_iter = int(input("How many iterations of the model?: "))
     replicates = np.arange(1, max_iter + 1)
