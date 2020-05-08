@@ -7,6 +7,10 @@ from torch import nn, optim
 from torch.utils import data
 from pyriemann.utils.mean import mean_covariance
 import torch.nn.functional as F
+import sklearn.datasets
+import sklearn.decomposition
+
+np.seterr(divide='ignore', invalid='ignore')
 
 
 class Net(nn.Module):
@@ -35,16 +39,18 @@ class Net(nn.Module):
         return num_features
 
 
-def get_data(method):
+def get_data():
     '''
     Navigates through file tree and extracts FCs with optional reconstruction
     '''
+    # Yeo ordering
     fname = '../data/100_unrelated.csv'
     yeo = True
     if yeo:
         yeo_order = list(sio.loadmat("../data/yeo_RS7_N374.mat",
                                      squeeze_me=True,
                                      struct_as_record=False)['yeoOrder'] - 1)
+    # Load subject ID and task names
     subjectids = np.loadtxt(fname, dtype=np.int)
     nSubj = len(subjectids)
     tasks = ['rfMRI_REST1_LR', 'rfMRI_REST1_RL', 'rfMRI_REST2_LR',
@@ -53,8 +59,8 @@ def get_data(method):
              'tfMRI_LANGUAGE_RL', 'tfMRI_MOTOR_LR', 'tfMRI_MOTOR_RL',
              'tfMRI_RELATIONAL_LR', 'tfMRI_RELATIONAL_RL', 'tfMRI_SOCIAL_LR',
              'tfMRI_SOCIAL_RL', 'tfMRI_WM_LR', 'tfMRI_WM_RL']
-
     M = {}
+    # Walk through file tree and extract FCs
     for task in tasks:
         masterFC_dir = '../data/results_SIFT2'
         restingstatename = 'fMRI/' + task + '/FC/FC_glasser_subc_GS_bp_z.mat'
@@ -81,13 +87,7 @@ def get_data(method):
     del M
     all_FC = np.concatenate((test, retest))
     del test, retest
-    if method == 'riemann':
-        eye_mat = np.eye(all_FC.shape[1])
-        scaling_mat = 0.1 * \
-            np.repeat(eye_mat[None, ...], all_FC.shape[0], axis=0)
-        all_FC += scaling_mat
-    tangent_FC = tangential(all_FC, method)
-    return tangent_FC, nSubj
+    return all_FC, nSubj
 
 
 def q1invm(q1, eig_thresh=0):
@@ -108,11 +108,17 @@ def qlog(q):
     return Q
 
 
-def tangential(all_FC, method):
-    Cg = mean_covariance(all_FC, metric=method)
+def tangential(all_FC, ref):
+    Cg = mean_covariance(all_FC, metric=ref)
     Q1_inv_sqrt = q1invm(Cg)
     Q = Q1_inv_sqrt @ all_FC @ Q1_inv_sqrt
     tangent_FC = np.array([qlog(a) for a in Q])
+    # Regularization for riemann
+    if ref == 'riemann':
+        eye_mat = np.eye(tangent_FC.shape[1])
+        scaling_mat = 0.1 * \
+            np.repeat(eye_mat[None, ...], tangent_FC.shape[0], axis=0)
+        tangent_FC += scaling_mat
     return tangent_FC
 
 
@@ -262,6 +268,26 @@ def train_model(model, opt, loss_fn, train_loader, val_loader,
     return model, history
 
 
+def pca_recon(FC, pctComp=None):
+    '''
+    Reconstructs FC based on number of principle components
+    '''
+    if pctComp is None:
+        return FC
+    FC = np.reshape(FC, (FC.shape[0], -1))
+    nComp = int(FC.shape[0] * pctComp)
+    mu = np.mean(FC, axis=0)
+    pca_rest = sklearn.decomposition.PCA()
+    pca_rest.fit(FC)
+    SCORES = pca_rest.transform(FC)[:, :nComp]
+    COEFFS = pca_rest.components_[:nComp, :]
+    FC_recon = np.dot(SCORES, COEFFS)
+    del SCORES, COEFFS
+    FC_recon += mu
+    FC_recon = np.reshape(FC_recon, (FC.shape[0], 374, 374))
+    return FC_recon
+
+
 def test_model(model, test_loader):
     '''
     After trained model is returned, this function tests the accuracy
@@ -286,13 +312,6 @@ def test_model(model, test_loader):
 
 
 if __name__ == '__main__':
-    reference_mats = ['riemann', 'logeuclid', 'euclid', 'identity',
-                      'logdet', 'wasserstein', 'ale', 'harmonic',
-                      'kullback_sym']
-    method = None
-    while method not in reference_mats:
-        method = input("Enter reference matrix for regularization: ")
-
     # GPU is available? If so, we use it.
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
@@ -302,28 +321,64 @@ if __name__ == '__main__':
         benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
-    tangent_FC, nSubj = get_data(method)
-    replicates = np.arange(1, 21)
+
+    # Navigate tree and get raw correlation FC matrices
+    print("Import all correlation matrices...", end=" ")
+    all_FC, nSubj = get_data()
+    print("All FCs successfully loaded!\n")
+
+    # PCA reconstruction
+    recon = input("PCA Reconstruction? Y/N: ")
+    if recon.lower() == "y":
+        ref = "NA"
+        comps = float(
+            input("Enter proportion of components for reconstruction: "))
+        all_FC = pca_recon(all_FC, pctComp=comps)
+        print(f"Reconstructed at {comps} of all PCs!")
+
+    # Tangent space regularization
+    else:
+        comps = "NA"
+        reg = input("Tangent space regularization? Y/N: ")
+        if reg.lower() == "y":
+            reference_mats = ['riemann', 'logeuclid', 'euclid', 'identity',
+                              'logdet', 'wasserstein', 'ale', 'harmonic',
+                              'kullback_sym']
+            ref, invalid = None, 0
+            while ref not in reference_mats:
+                if invalid > 0:
+                    print(f"Choose from {reference_mats}")
+                ref = input("Enter reference matrix for regularization: ")
+                invalid += 1
+            print("Regularizing the FCs...", end=" ")
+            all_FC = tangential(all_FC, ref)
+            print("done!\n")
+        else:
+            tan = 0
+
+    max_iter = int(input("How many iterations of the model?: "))
+    replicates = np.arange(1, max_iter + 1)
     all_acc, all_loss = {}, {}
-    # Get data from file tree
     # Prepare train, validation, and test data for NN
+    print("Preparing data for CNN...", end=" ")
     train_loader, val_loader, test_loader = prepare_data(
-        tangent_FC, nSubj)
+        all_FC, nSubj)
+    print("done!\n")
     # Max epochs of training, early stopping threshold, learning rate
     max_epochs, n_epochs_stop, lr = 200, 5, 0.001
-    # Build model accordingly
+    # Loop over iterations of the model
     for rep in replicates:
         model, loss_fn, opt, history = build_model(lr)
-        print(f"Now training {rep}...")
+        print(f"Now training model {rep} of {replicates[-1]}...")
         model, history = train_model(model, opt, loss_fn, train_loader,
                                      val_loader, max_epochs, n_epochs_stop,
                                      history)
         accuracy = test_model(model, test_loader)
         all_acc[rep] = accuracy
         all_loss[rep] = min(history['val_loss'])
-        print(f'Rep: {rep}; Test accuracy of model is {accuracy}')
+        print(f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
     # Write to dataframe and to csv
-    filename = f'../results/HCP100_Tan{method}_E{max_epochs}_LR{lr}_R1_S0_Y1_{rep}.csv'
+    filename = f'../results/HCP100_Tan:{ref}_PCA:{comps}.csv'
     results = pd.DataFrame.from_dict(
         all_acc, orient='index', columns=['Accuracy'])
     results["Loss"] = pd.Series(all_loss)
