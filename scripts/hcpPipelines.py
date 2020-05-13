@@ -137,7 +137,7 @@ def prepare_data(all_FC, nSubj):
     val_idx = train_val_idx[int(0.8 * train_val_idx.shape[0]):]
     train_idx = train_val_idx[:int(0.8 * train_val_idx.shape[0])]
     test_idx = indices[int(0.8 * nSubj):]
-
+    # Subject grouping constraint for indices
     val_idx_all, train_idx_all, test_idx_all = np.empty(
         0), np.empty(0), np.empty(0)
     for fc in np.arange(0, 16):
@@ -174,7 +174,6 @@ def prepare_data(all_FC, nSubj):
         val_dataset, batch_size=80)  # create your dataloader
     test_loader = data.DataLoader(
         test_dataset, batch_size=80)  # create your dataloader
-
     return train_loader, val_loader, test_loader
 
 
