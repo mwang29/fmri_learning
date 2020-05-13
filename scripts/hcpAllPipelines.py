@@ -144,7 +144,10 @@ def prepare_data(all_FC, nSubj):
         val_idx_all = np.concatenate((val_idx_all, (fc * 95) + val_idx))
         train_idx_all = np.concatenate((train_idx_all, (fc * 95) + train_idx))
         test_idx_all = np.concatenate((test_idx_all, (fc * 95) + test_idx))
-
+    val_idx_all = val_idx_all.astype(int)
+    train_idx_all = train_idx_all.astype(int)
+    test_idx_all = test_idx_all.astype(int)
+    print(type(val_idx_all))
     train_mean = np.mean(all_FC[train_idx_all])
     train_std = np.std(all_FC[train_idx_all])
     train_data = torch.FloatTensor(
@@ -332,8 +335,8 @@ if __name__ == '__main__':
         print("No GPU detected. Will use CPU for training.")
 
     # Tangent space regularization
-    reference_mats = ['riemann', 'logeuclid', 'euclid', 'harmonic',
-                      'kullback_sym']
+    reference_mats = ['euclid', 'logeuclid', 'kullback_sym', 'harmonic',
+                      'riemann']
     for ref in reference_mats:
         # Navigate tree and get raw correlation FC matrices
         print("Importing all correlation matrices...", end=" ")
@@ -350,7 +353,7 @@ if __name__ == '__main__':
             all_FC, nSubj)
         print("done!\n")
         # Max epochs of training, early stopping threshold, learning rate
-        max_epochs, n_epochs_stop, lr = 1, 5, 0.001
+        max_epochs, n_epochs_stop, lr = 200, 3, 0.001
         # Loop over iterations of the model
         for rep in replicates:
             model, loss_fn, opt, history = build_model(lr)
@@ -363,7 +366,7 @@ if __name__ == '__main__':
             all_loss[rep] = min(history['val_loss'])
             print(f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
         # Write to dataframe and to csv
-        filename = f'../results/HCP100_Tan:{ref}_PCA:NA.csv'
+        filename = f'../results/HCP100_Tan{ref}_PCANA.csv'
         results = pd.DataFrame.from_dict(
             all_acc, orient='index', columns=['Accuracy'])
         results["Loss"] = pd.Series(all_loss)
