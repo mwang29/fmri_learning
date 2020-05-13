@@ -110,10 +110,10 @@ def qlog(q):
 
 def tangential(all_FC, ref):
     # Regularization for riemann
-    if ref == 'riemann':
+    if ref in ['riemann', 'kullback_sym', 'logeuclid']:
+        print("Adding regularization!")
         eye_mat = np.eye(all_FC.shape[1])
-        scaling_mat = 0.1 * \
-            np.repeat(eye_mat[None, ...], all_FC.shape[0], axis=0)
+        scaling_mat = np.repeat(eye_mat[None, ...], all_FC.shape[0], axis=0)
         all_FC += scaling_mat
     Cg = mean_covariance(all_FC, metric=ref)
     Q1_inv_sqrt = q1invm(Cg)
@@ -130,20 +130,29 @@ def prepare_data(all_FC, nSubj):
     labels = torch.tensor(
         np.tile(np.repeat(np.arange(0, 8), nSubj), 2), dtype=torch.long)
     # Randomly shuffled indices for test FCs
-    indices = np.random.permutation(all_FC.shape[0])
+    indices = np.random.permutation(nSubj)
     # Take subsets of data for training, validation, test
-    train_val_idx = indices[:int(0.8 * all_FC.shape[0])]
+    train_val_idx = indices[:int(0.8 * nSubj)]
     # Val, train, test indices
     val_idx = train_val_idx[int(0.8 * train_val_idx.shape[0]):]
     train_idx = train_val_idx[:int(0.8 * train_val_idx.shape[0])]
-    test_idx = indices[int(0.8 * all_FC.shape[0]):]
+    test_idx = indices[int(0.8 * nSubj):]
 
-    train_mean = np.mean(all_FC[train_idx])
-    train_std = np.std(all_FC[train_idx])
+    val_idx_all, train_idx_all, test_idx_all = np.empty(
+        0), np.empty(0), np.empty(0)
+    for fc in np.arange(0, 16):
+        val_idx_all = np.concatenate((val_idx_all, (fc * 95) + val_idx))
+        train_idx_all = np.concatenate((train_idx_all, (fc * 95) + train_idx))
+        test_idx_all = np.concatenate((test_idx_all, (fc * 95) + test_idx))
+
+    train_mean = np.mean(all_FC[train_idx_all])
+    train_std = np.std(all_FC[train_idx_all])
     train_data = torch.FloatTensor(
-        (all_FC[train_idx] - train_mean) / train_std)
-    val_data = torch.FloatTensor((all_FC[val_idx] - train_mean) / train_std)
-    test_data = torch.FloatTensor((all_FC[test_idx] - train_mean) / train_std)
+        (all_FC[train_idx_all] - train_mean) / train_std)
+    val_data = torch.FloatTensor(
+        (all_FC[val_idx_all] - train_mean) / train_std)
+    test_data = torch.FloatTensor(
+        (all_FC[test_idx_all] - train_mean) / train_std)
 
     train_data = train_data.view(
         train_data.shape[0], -1, train_data.shape[1], train_data.shape[2])
@@ -153,11 +162,11 @@ def prepare_data(all_FC, nSubj):
         test_data.shape[0], -1, test_data.shape[1], test_data.shape[2])
 
     train_dataset = data.TensorDataset(
-        train_data, labels[train_idx])  # create your datset
+        train_data, labels[train_idx_all])  # create your datset
     val_dataset = data.TensorDataset(
-        val_data, labels[val_idx])  # create your datset
+        val_data, labels[val_idx_all])  # create your datset
     test_dataset = data.TensorDataset(
-        test_data, labels[test_idx])  # create your datset
+        test_data, labels[test_idx_all])  # create your datset
 
     train_loader = data.DataLoader(
         train_dataset, batch_size=80)  # create your dataloader
