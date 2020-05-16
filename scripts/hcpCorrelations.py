@@ -113,40 +113,37 @@ def pca_recon(FC, pctComp=None):
 
 
 if __name__ == '__main__':
-    # Navigate tree and get raw correlation FC matrices
-    print("Importing all correlation matrices...", end=" ")
-    all_FC, nSubj = get_data()
-    print("All FCs successfully loaded!\n")
-    labels = np.tile(np.repeat(np.arange(0, 8), nSubj), 2)
-    indices = np.random.permutation(all_FC.shape[0])
-    # PCA reconstruction
-    recon = input("PCA Reconstruction? Y/N: ")
-    if recon.lower() == "y":
-        ref = "NA"
-        comps = float(
-            input("Enter proportion of components for reconstruction: "))
-        all_FC = pca_recon(all_FC, pctComp=comps)
-        print(f"Reconstructed at {comps} of all PCs!")
 
     # Tangent space regularization
-    else:
-        comps = "NA"
-        reg = input("Tangent space regularization? Y/N: ")
-        if reg.lower() == "y":
-            reference_mats = ['riemann', 'logeuclid', 'euclid', 'identity',
-                              'logdet', 'wasserstein', 'ale', 'harmonic',
-                              'kullback_sym']
-            ref, invalid = None, 0
-            while ref not in reference_mats:
-                if invalid > 0:
-                    print(f"Choose from {reference_mats}")
-                ref = input(
-                    "Enter reference matrix (press enter for options): ")
-                invalid += 1
-            print("Regularizing the FCs...", end=" ")
-            all_FC = tangential(all_FC, ref)
-            print("done!\n")
-        else:
-            ref = "NA"
+    # , 'logeuclid', 'kullback_sym', 'harmonic',  #'riemann']
+    reference_mats = ['euclid']
+    distance_method = input("Which distance metric?").lower()
+    for ref in reference_mats:
+        # Navigate tree and get raw correlation FC matrices
+        print("Importing all correlation matrices...", end=" ")
+        all_FC, nSubj = get_data()
+        labels = np.tile(np.repeat(np.arange(0, 8), nSubj), 2)
+        indices = np.random.permutation(all_FC.shape[0])
+        train_idx = indices[:int(0.8 * all_FC.shape[0])]
+        test_idx = indices[int(0.8 * all_FC.shape[0]):]
+        print("All FCs successfully loaded!\n")
 
-    print(all_FC.shape)
+        print(f"Using {ref} reference in tangent space!")
+        all_FC = tangential(all_FC, ref)
+        min_dist, num_correct = np.inf, 0
+        for idx1, mat1 in enumerate(all_FC[test_idx]):
+            print(idx1)
+            true_label = labels[test_idx[idx1]]
+            mat1 = mat1[np.triu_indices(mat1.shape[0], k=0)]
+            if distance_method == 'euclid':
+                for idx2, mat2 in enumerate(all_FC[train_idx]):
+                    mat2 = mat2[np.triu_indices(mat2.shape[0], k=0)]
+                    temp_dist = distance.euclidean(mat1, mat2)
+                    if temp_dist < min_dist:
+                        min_dist = temp_dist
+                        best_idx = train_idx[idx2]
+            pred_label = labels[best_idx]
+            if pred_label == true_label:
+                num_correct += 1
+        accuracy = num_correct / len(test_idx)
+        print(accuracy)

@@ -17,3 +17,7 @@ fig.savefig('accuracies.png')
 # tips = sns.load_dataset("tips")
 # print(tips.head())
 # ax = sns.violinplot(x="day", y="total_bill", data=tips)
+
+distances = pd.read_csv('distances.csv')
+g = sns.catplot(x="class", y="survived", hue="sex", data=titanic,
+                height=6, kind="bar", palette="muted")
