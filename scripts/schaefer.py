@@ -121,18 +121,19 @@ if __name__ == '__main__':
 
     accuracies = {}
 
-    for parc in np.arange(100, 600, 100):
+    for parc in np.arange(100, 400, 100):
         print(f'Using Schaefer {parc} parcellation...')
         testFCs = all_parc[parc]['FC_all_vec'][::2]
         retest_FCs = all_parc[parc]['FC_all_vec'][1::2]
-        reordered_FCs = np.concatenate([testFCs, retest_FCs])
-        mat_FCs = np.zeros((nFCs, parc + 13, parc + 13))
+        reordered_FCs = np.float32(np.concatenate([testFCs, retest_FCs]))
+        del testFCs, retest_FCs
+        all_FC = np.zeros((nFCs, parc + 13, parc + 13),dtype="float32")
         for i in np.arange(0, nFCs):
-            mat_FCs[i] = utri2mat(reordered_FCs[i])
-        for ref in ['euclid', 'harmonic', 'none']:
+            all_FC[i] = utri2mat(reordered_FCs[i])
+        for ref in ['euclid', 'harmonic', 'kullback_sym', 'none']:
             print(f'Testing {ref}...')
             if ref != 'none':
-                all_FC = tangential(mat_FCs, ref)
+                all_FC = tangential(all_FC, ref)
                 train_FCs = np.zeros(
                     (len(train_idx), reordered_FCs.shape[1]), dtype=np.float32)
                 for idx, mat in enumerate(all_FC[train_idx]):
@@ -145,14 +146,15 @@ if __name__ == '__main__':
                 train_FCs = reordered_FCs[train_idx]
                 test_FCs = reordered_FCs[test_idx]
             print(f'Fitting KNN...')
-            neigh = KNeighborsClassifier(n_neighbors=30, metric='correlation')
-            neigh.fit(train_FCs, train_labels)
-            predicted = neigh.predict(test_FCs)
-            acc = accuracy_score(test_labels, predicted)
-            print(f'Accuracy: {acc}')
-            accuracies[f"{ref}_{parc}"] = acc
+            for k in [1, 5, 15]:
+                neigh = KNeighborsClassifier(n_neighbors=k, metric='correlation')
+                neigh.fit(train_FCs, train_labels)
+                predicted = neigh.predict(test_FCs)
+                acc = accuracy_score(test_labels, predicted)
+                print(f'Accuracy: {acc}')
+                accuracies[f"{k}_{ref}_{parc}"] = acc
 
-    a_file = open(f"../results/schaefer_{parc}_{classifier}.csv", "w")
+    a_file = open(f"../results/schaefer_{parc}_{classifier}_float32.csv", "w")
 
     writer = csv.writer(a_file)
     for key, value in accuracies.items():
