@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import scipy
-import scipy.io as sio
+import pickle
 import torch
 from torch import nn, optim
 from torch.utils import data
@@ -24,13 +24,13 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(128, 8)
 
     def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), (3,3)))
-        x = F.relu(F.max_pool2d(self.conv2_bn(self.conv2(x)), (3,3)))
+        x = F.relu(F.max_pool2d(self.conv1(x), (3, 3)))
+        x = F.relu(F.max_pool2d(self.conv2_bn(self.conv2(x)), (3, 3)))
         x = x.view(-1, self.num_flat_features(x))
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
-    
+
     def num_flat_features(self, x):
         size = x.size()[1:]  # all dimensions except the batch dimension
         num_features = 1
@@ -39,55 +39,15 @@ class Net(nn.Module):
         return num_features
 
 
-def get_data():
+def get_data(parc):
     '''
     Navigates through file tree and extracts FCs with optional reconstruction
     '''
-    # Yeo ordering
-    fname = '../data/100_unrelated.csv'
-    yeo = True
-    if yeo:
-        yeo_order = list(sio.loadmat("../data/yeo_RS7_N374.mat",
-                                     squeeze_me=True,
-                                     struct_as_record=False)['yeoOrder'] - 1)
-    # Load subject ID and task names
-    subjectids = np.loadtxt(fname, dtype=np.int)
-    nSubj = len(subjectids)
-    tasks = ['rfMRI_REST1_LR', 'rfMRI_REST1_RL', 'rfMRI_REST2_LR',
-             'rfMRI_REST2_RL', 'tfMRI_EMOTION_LR', 'tfMRI_EMOTION_RL',
-             'tfMRI_GAMBLING_LR', 'tfMRI_GAMBLING_RL', 'tfMRI_LANGUAGE_LR',
-             'tfMRI_LANGUAGE_RL', 'tfMRI_MOTOR_LR', 'tfMRI_MOTOR_RL',
-             'tfMRI_RELATIONAL_LR', 'tfMRI_RELATIONAL_RL', 'tfMRI_SOCIAL_LR',
-             'tfMRI_SOCIAL_RL', 'tfMRI_WM_LR', 'tfMRI_WM_RL']
-    M = {}
-    # Walk through file tree and extract FCs
-    for task in tasks:
-        masterFC_dir = '../data/results_SIFT2'
-        restingstatename = 'fMRI/' + task + '/FC/FC_glasser_subc_GS_bp_z.mat'
-        task_matrices = []
-        for subject in subjectids:
-            filename = masterFC_dir + '/' + \
-                str(subject) + '/' + restingstatename
-            mat = sio.loadmat(filename, squeeze_me=True,
-                              struct_as_record=False)
-            A_orig = mat['FC']
-            if yeo:
-                A_orig = A_orig[np.ix_(yeo_order, yeo_order)]
-            np.fill_diagonal(A_orig, 1)
-            task_matrices.append(A_orig)
-        M[task] = np.array(task_matrices)
-    test = np.concatenate((M['rfMRI_REST1_LR'], M['tfMRI_EMOTION_LR'],
-                           M['tfMRI_GAMBLING_LR'], M['tfMRI_LANGUAGE_LR'],
-                           M['tfMRI_MOTOR_LR'], M['tfMRI_RELATIONAL_LR'],
-                           M['tfMRI_SOCIAL_LR'], M['tfMRI_WM_LR']))
-    retest = np.concatenate((M['rfMRI_REST1_RL'], M['tfMRI_EMOTION_RL'],
-                             M['tfMRI_GAMBLING_RL'], M['tfMRI_LANGUAGE_RL'],
-                             M['tfMRI_MOTOR_RL'], M['tfMRI_RELATIONAL_RL'],
-                             M['tfMRI_SOCIAL_RL'], M['tfMRI_WM_RL']))
-    del M
-    all_FC = np.concatenate((test, retest))
-    del test, retest
-    return all_FC, nSubj
+    with open(f'../data/schaefer{parc}.pickle', 'rb') as f:
+        all_FC = pickle.load(f)
+    nSubj = int(all_FC.shape[0] / 16)
+    nFCs = int(all_FC.shape[0])
+    return all_FC, nSubj, nFCs
 
 
 def q1invm(q1, eig_thresh=0):
@@ -122,7 +82,7 @@ def tangential(all_FC, ref):
     return tangent_FC
 
 
-def prepare_data(all_FC, nSubj):
+def prepare_data(all_FC, nSubj, nFCs):
     '''
     Prepares labels and train, val and test data from raw data
     '''
@@ -130,33 +90,25 @@ def prepare_data(all_FC, nSubj):
     labels = torch.tensor(
         np.tile(np.repeat(np.arange(0, 8), nSubj), 2), dtype=torch.long)
     # Randomly shuffled indices for test FCs
-    indices = np.random.permutation(nSubj)
+    indices = np.random.permutation(nFCs)
     # Take subsets of data for training, validation, test
-    train_val_idx = indices[:int(0.8 * nSubj)]
-    # Val, train, test indices
+    train_val_idx = indices[:int(0.8 * nFCs)]
+
     val_idx = train_val_idx[int(0.8 * train_val_idx.shape[0]):]
     train_idx = train_val_idx[:int(0.8 * train_val_idx.shape[0])]
-    test_idx = indices[int(0.8 * nSubj):]
-    # Subject grouping constraint for indices
-    val_idx_all, train_idx_all, test_idx_all = np.empty(
-        0), np.empty(0), np.empty(0)
-    for fc in np.arange(0, 16):
-        val_idx_all = np.concatenate((val_idx_all, (fc * 95) + val_idx))
-        train_idx_all = np.concatenate((train_idx_all, (fc * 95) + train_idx))
-        test_idx_all = np.concatenate((test_idx_all, (fc * 95) + test_idx))
-    val_idx_all = val_idx_all.astype(int)
-    train_idx_all = train_idx_all.astype(int)
-    test_idx_all = test_idx_all.astype(int)
-    print(type(val_idx_all))
-    train_mean = np.mean(all_FC[train_idx_all])
-    train_std = np.std(all_FC[train_idx_all])
-    train_data = torch.FloatTensor(
-        (all_FC[train_idx_all] - train_mean) / train_std)
-    val_data = torch.FloatTensor(
-        (all_FC[val_idx_all] - train_mean) / train_std)
-    test_data = torch.FloatTensor(
-        (all_FC[test_idx_all] - train_mean) / train_std)
+    test_idx = indices[int(0.8 * nFCs):]
 
+    # Normalize data to training mean and stdev
+    train_mean = np.mean(all_FC[train_idx])
+    train_std = np.std(all_FC[train_idx])
+    train_data = torch.FloatTensor(
+        (all_FC[train_idx] - train_mean) / train_std)
+    val_data = torch.FloatTensor(
+        (all_FC[val_idx] - train_mean) / train_std)
+    test_data = torch.FloatTensor(
+        (all_FC[test_idx] - train_mean) / train_std)
+
+    # Add channel dimension
     train_data = train_data.view(
         train_data.shape[0], -1, train_data.shape[1], train_data.shape[2])
     val_data = val_data.view(
@@ -165,11 +117,11 @@ def prepare_data(all_FC, nSubj):
         test_data.shape[0], -1, test_data.shape[1], test_data.shape[2])
 
     train_dataset = data.TensorDataset(
-        train_data, labels[train_idx_all])  # create your datset
+        train_data, labels[train_idx])  # create your datset
     val_dataset = data.TensorDataset(
-        val_data, labels[val_idx_all])  # create your datset
+        val_data, labels[val_idx])  # create your datset
     test_dataset = data.TensorDataset(
-        test_data, labels[test_idx_all])  # create your datset
+        test_data, labels[test_idx])  # create your datset
 
     train_loader = data.DataLoader(
         train_dataset, batch_size=80)  # create your dataloader
@@ -180,13 +132,12 @@ def prepare_data(all_FC, nSubj):
     return train_loader, val_loader, test_loader
 
 
-def build_model(lr, parc):
+def build_model(lr, nHidden):
     '''
     Given layer sizes and learning rate, builds model.
     Can change NN architecture here directly in nn.Sequential
     '''
-    hidden_dict = {100: 1200, 200: 5292, 300: 13068, 400: 23232, 500: 36300}
-    model = Net(hidden_dict[parc])
+    model = Net(nHidden)
     if use_cuda:
         model = model.cuda()
     loss_fn = nn.CrossEntropyLoss()
@@ -335,40 +286,47 @@ if __name__ == '__main__':
     else:
         print("No GPU detected. Will use CPU for training.")
 
-    # Tangent space regularization
-    reference_mats = ['euclid', 'logeuclid', 'kullback_sym', 'harmonic',
-                      'riemann']
-    for ref in reference_mats:
-        # Navigate tree and get raw correlation FC matrices
-        print("Importing all correlation matrices...", end=" ")
-        all_FC, nSubj = get_data()
-        print("All FCs successfully loaded!\n")
-
-        print(f"Using {ref} reference in tangent space!")
-        all_FC = tangential(all_FC, ref)
-        replicates = np.arange(1, 21)
-        all_acc, all_loss = {}, {}
-        # Prepare train, validation, and test data for NN
-        print("Preparing data for CNN...", end=" ")
-        train_loader, val_loader, test_loader = prepare_data(
-            all_FC, nSubj)
-        print("done!\n")
-        # Max epochs of training, early stopping threshold, learning rate
-        max_epochs, n_epochs_stop, lr = 200, 3, 0.001
-        # Loop over iterations of the model
-        for rep in replicates:
-            model, loss_fn, opt, history = build_model(lr)
-            print(f"Now training model {rep} of {replicates[-1]}...")
-            model, history = train_model(model, opt, loss_fn, train_loader,
-                                         val_loader, max_epochs, n_epochs_stop,
-                                         history)
-            accuracy = test_model(model, test_loader)
-            all_acc[rep] = accuracy
-            all_loss[rep] = min(history['val_loss'])
-            print(f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
-        # Write to dataframe and to csv
-        filename = f'../results/HCP100_Tan{ref}_PCA_NA.csv'
-        results = pd.DataFrame.from_dict(
-            all_acc, orient='index', columns=['Accuracy'])
-        results["Loss"] = pd.Series(all_loss)
-        results.to_csv(filename)
+    hidden_dict = {100: 1200, 200: 5292, 300: 13068, 400: 23232, 500: 36300}
+    for parc in [100, 200, 300]:
+        reference_mats = ['raw fc', 'pca', 'euclid', 'harmonic']
+        for ref in reference_mats:
+            # Navigate tree and get raw correlation FC matrices
+            print("Importing all correlation matrices...", end=" ")
+            all_FC, nSubj = get_data(parc)
+            print("All FCs successfully loaded!\n")
+            if ref == 'pca':
+                all_FC = pca_recon(all_FC, 0.01)
+                print(f"Using {ref} reconstruction!")
+            elif ref != 'raw fc':
+                print(f"Using {ref} reference in tangent space!")
+                all_FC = tangential(all_FC, ref)
+            else:
+                pass
+            replicates = np.arange(1, 21)
+            all_acc, all_loss = {}, {}
+            # Prepare train, validation, and test data for NN
+            print("Preparing data for CNN...", end=" ")
+            train_loader, val_loader, test_loader = prepare_data(
+                all_FC, nSubj)
+            print("done!\n")
+            # Max epochs of training, early stopping threshold, learning rate
+            max_epochs, n_epochs_stop, lr = 100, 5, 0.001
+            # Loop over iterations of the model
+            for rep in replicates:
+                model, loss_fn, opt, history = build_model(
+                    lr, hidden_dict[parc])
+                print(f"{ref}: Training model {rep} of {replicates[-1]}...")
+                model, history = train_model(model, opt, loss_fn, train_loader,
+                                             val_loader, max_epochs, n_epochs_stop,
+                                             history)
+                accuracy = test_model(model, test_loader)
+                all_acc[rep] = accuracy
+                all_loss[rep] = min(history['val_loss'])
+                print(
+                    f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
+            # Write to dataframe and to csv
+            filename = f'../results/CNN_schaefer{parc}_{ref}.csv'
+            results = pd.DataFrame.from_dict(
+                all_acc, orient='index', columns=['Accuracy'])
+            results["Loss"] = pd.Series(all_loss)
+            results.to_csv(filename)
