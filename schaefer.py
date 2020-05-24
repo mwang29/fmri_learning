@@ -65,7 +65,6 @@ def pca_recon(FC, pctComp=None):
     '''
     if pctComp is None:
         return FC
-    nRegions = FC.shape[1]
     FC = np.reshape(FC, (FC.shape[0], -1))
     nComp = int(FC.shape[0] * pctComp)
     mu = np.mean(FC, axis=0)
@@ -76,7 +75,7 @@ def pca_recon(FC, pctComp=None):
     FC_recon = np.dot(SCORES, COEFFS)
     del SCORES, COEFFS
     FC_recon += mu
-    FC_recon = np.reshape(FC_recon, (FC.shape[0], nRegions, nRegions))
+    FC_recon = np.reshape(FC_recon, (FC.shape[0], 374, 374))
     return FC_recon
 
 
@@ -122,39 +121,45 @@ if __name__ == '__main__':
 
     accuracies = {}
 
-    for parc in np.arange(100, 400, 100):
-        with open(f'../data/schaefer{parc}.pickle', 'rb') as f:
-            all_FC = pickle.load(f)
+    for parc in np.arange(100):
         print(f'Using Schaefer {parc} parcellation...')
+        testFCs = all_parc[parc]['FC_all_vec'][::2]
+        retest_FCs = all_parc[parc]['FC_all_vec'][1::2]
+        reordered_FCs = np.float32(np.concatenate([testFCs, retest_FCs]))
+        del testFCs, retest_FCs
+        all_FC = np.zeros((nFCs, parc + 13, parc + 13),dtype="float32")
+        for i in np.arange(0, nFCs):
+            all_FC[i] = utri2mat(reordered_FCs[i])
         for ref in ['euclid', 'pca', 'none']:
             print(f'Testing {ref}...')
-            if ref == 'pca':
-                all_FC = pca_recon(all_FC, 0.025)
-            elif ref == 'euclid':
-                all_FC = tangential(all_FC, ref)
-            else:
-                pass
-            vec_FCs = np.zeros(
-                (nFCs, all_parc[parc]['FC_all_vec'].shape[1]), dtype=np.float32)
-            for idx, mat in enumerate(all_FC):
-                vec_FCs[idx] = mat[np.triu_indices(mat.shape[0], k=0)]
-            train_FCs = vec_FCs[train_idx]
-            test_FCs = vec_FCs[test_idx]
+            if ref != 'none':
+                if ref == 'pca':
+                    all_FC = pca_recon(all_FC, 0.025)
+                elif ref == 'euclid:
+                    all_FC = tangential(all_FC, ref)
+                else:
+                    pass
+                train_FCs = np.zeros(
+                    (len(train_idx), reordered_FCs.shape[1]), dtype=np.float32)
+                for idx, mat in enumerate(all_FC[train_idx]):
+                    train_FCs[idx] = mat[np.triu_indices(mat.shape[0], k=0)]
+                test_FCs = np.zeros(
+                    (len(test_idx), reordered_FCs.shape[1]), dtype=np.float32)
+                for idx, mat in enumerate(all_FC[test_idx]):
+                    test_FCs[idx] = mat[np.triu_indices(mat.shape[0], k=0)]
             print(f'Fitting KNN...')
             for k in [1]:
-                neigh = KNeighborsClassifier(
-                    n_neighbors=k, metric='correlation')
+                neigh = KNeighborsClassifier(n_neighbors=k, metric='correlation')
                 neigh.fit(train_FCs, train_labels)
                 predicted = neigh.predict(test_FCs)
                 acc = accuracy_score(test_labels, predicted)
                 print(f'Accuracy: {acc}')
                 accuracies[f"{k}_{ref}_{parc}"] = acc
 
-    # a_file = open(
-    #     f"../results/schaefer_{parc}_{classifier}_pca_float32.csv", "w")
+    a_file = open(f"../results/schaefer_{parc}_{classifier}_pca_float32.csv", "w")
 
-    # writer = csv.writer(a_file)
-    # for key, value in accuracies.items():
-    #     writer.writerow([key, value])
+    writer = csv.writer(a_file)
+    for key, value in accuracies.items():
+        writer.writerow([key, value])
 
-    # a_file.close()
+    a_file.close()
