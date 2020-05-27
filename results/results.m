@@ -43,8 +43,9 @@ loss = [rep2(:,3), rep3(:,3), rep4(:,3), rep5(:,3)];
 set(gcf, 'Position',  [100, 100, 1000, 500])
 plot(pct_comps, accuracy, 'b.', 'MarkerSize',15);
 set(gca,'color','none')
+set(gca,'fontsize',14)
 xlabel('Proportion PCs'), ylabel('Test Accuracy')
-saveas(gcf,'../results/pca_reps_acc.png')
+% saveas(gcf,'../results/pca_reps_acc.png')
 %% Subject Grouping vs. Random Indices
 Srep1 = csvread('HCP100_E200_LR0.001_R0_S1_Y1_1.csv',1,0);
 Srep2 = csvread('HCP100_E200_LR0.001_R0_S1_Y1_2.csv',1,0);
