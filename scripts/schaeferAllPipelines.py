@@ -237,6 +237,7 @@ def pca_recon(FC, pctComp=None):
     '''
     if pctComp is None:
         return FC
+    nRegions = FC.shape[1]
     FC = np.reshape(FC, (FC.shape[0], -1))
     nComp = int(FC.shape[0] * pctComp)
     mu = np.mean(FC, axis=0)
@@ -247,7 +248,7 @@ def pca_recon(FC, pctComp=None):
     FC_recon = np.dot(SCORES, COEFFS)
     del SCORES, COEFFS
     FC_recon += mu
-    FC_recon = np.reshape(FC_recon, (FC.shape[0], 374, 374))
+    FC_recon = np.reshape(FC_recon, (FC.shape[0], nRegions, nRegions))
     return FC_recon
 
 
@@ -282,17 +283,18 @@ if __name__ == '__main__':
         device_name = torch.cuda.get_device_name(0)
         print(f"GPU detected: {device_name}!")
         torch.backends.cudnn
+        torch.backends.cudnn.enabled = False 
         benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
-
     hidden_dict = {100: 1200, 200: 5292, 300: 13068, 400: 23232, 500: 36300}
-    for parc in [100, 200, 300]:
-        reference_mats = ['raw fc', 'pca', 'euclid', 'harmonic']
+    for parc in [300]:
+        print(f'Using Schaefer{parc} parcellation')
+        reference_mats = ['raw fc']
         for ref in reference_mats:
             # Navigate tree and get raw correlation FC matrices
             print("Importing all correlation matrices...", end=" ")
-            all_FC, nSubj = get_data(parc)
+            all_FC, nSubj, nFCs = get_data(parc)
             print("All FCs successfully loaded!\n")
             if ref == 'pca':
                 all_FC = pca_recon(all_FC, 0.01)
@@ -307,10 +309,10 @@ if __name__ == '__main__':
             # Prepare train, validation, and test data for NN
             print("Preparing data for CNN...", end=" ")
             train_loader, val_loader, test_loader = prepare_data(
-                all_FC, nSubj)
+                all_FC, nSubj, nFCs)
             print("done!\n")
             # Max epochs of training, early stopping threshold, learning rate
-            max_epochs, n_epochs_stop, lr = 100, 5, 0.001
+            max_epochs, n_epochs_stop, lr = 200, 5, 0.001
             # Loop over iterations of the model
             for rep in replicates:
                 model, loss_fn, opt, history = build_model(

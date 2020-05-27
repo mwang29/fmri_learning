@@ -14,13 +14,13 @@ np.seterr(divide='ignore', invalid='ignore')
 
 
 class Net(nn.Module):
-    def __init__(self, nHidden):
+    def __init__(self):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 6, kernel_size=5)
         self.conv2 = nn.Conv2d(6, 12, kernel_size=5)
         self.conv2_bn = nn.BatchNorm2d(12)
         self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(nHidden, 128)
+        self.fc1 = nn.Linear(18252, 128)
         self.fc2 = nn.Linear(128, 8)
 
     def forward(self, x):
@@ -85,7 +85,7 @@ def get_data():
                              M['tfMRI_MOTOR_RL'], M['tfMRI_RELATIONAL_RL'],
                              M['tfMRI_SOCIAL_RL'], M['tfMRI_WM_RL']))
     del M
-    all_FC = np.concatenate((test, retest))
+    all_FC = np.float32(np.concatenate((test, retest)))
     del test, retest
     return all_FC, nSubj
 
@@ -180,13 +180,12 @@ def prepare_data(all_FC, nSubj):
     return train_loader, val_loader, test_loader
 
 
-def build_model(lr, parc):
+def build_model(lr):
     '''
     Given layer sizes and learning rate, builds model.
     Can change NN architecture here directly in nn.Sequential
     '''
-    hidden_dict = {100: 1200, 200: 5292, 300: 13068, 400: 23232, 500: 36300}
-    model = Net(hidden_dict[parc])
+    model = Net()
     if use_cuda:
         model = model.cuda()
     loss_fn = nn.CrossEntropyLoss()
@@ -336,8 +335,8 @@ if __name__ == '__main__':
         print("No GPU detected. Will use CPU for training.")
 
     # Tangent space regularization
-    reference_mats = ['euclid', 'logeuclid', 'kullback_sym', 'harmonic',
-                      'riemann']
+    reference_mats = ['euclid'] #, 'logeuclid', 'kullback_sym', 'harmonic',
+                     # 'riemann']
     for ref in reference_mats:
         # Navigate tree and get raw correlation FC matrices
         print("Importing all correlation matrices...", end=" ")
@@ -346,7 +345,7 @@ if __name__ == '__main__':
 
         print(f"Using {ref} reference in tangent space!")
         all_FC = tangential(all_FC, ref)
-        replicates = np.arange(1, 21)
+        replicates = np.arange(1, 2)
         all_acc, all_loss = {}, {}
         # Prepare train, validation, and test data for NN
         print("Preparing data for CNN...", end=" ")
@@ -367,8 +366,8 @@ if __name__ == '__main__':
             all_loss[rep] = min(history['val_loss'])
             print(f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
         # Write to dataframe and to csv
-        filename = f'../results/HCP100_Tan{ref}_PCA_NA.csv'
-        results = pd.DataFrame.from_dict(
-            all_acc, orient='index', columns=['Accuracy'])
-        results["Loss"] = pd.Series(all_loss)
-        results.to_csv(filename)
+        #filename = f'../results/HCP100_Tan{ref}_PCA_NA.csv'
+        #results = pd.DataFrame.from_dict(
+        #    all_acc, orient='index', columns=['Accuracy'])
+        #results["Loss"] = pd.Series(all_loss)
+        #results.to_csv(filename)
