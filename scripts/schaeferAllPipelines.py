@@ -180,8 +180,8 @@ def train_model(model, opt, loss_fn, train_loader, val_loader,
                                   [1] == local_labels).sum().item()
             num_train_examples += local_batch.shape[0]
 
-            train_acc = num_train_correct / num_train_examples
-            train_loss = train_loss / len(train_loader.dataset)
+        train_acc = num_train_correct / num_train_examples
+        train_loss = train_loss / len(train_loader.dataset)
 
         # Validation
         model.eval()
