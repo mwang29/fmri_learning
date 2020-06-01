@@ -43,7 +43,7 @@ def get_data(parc):
     '''
     Navigates through file tree and extracts FCs with optional reconstruction
     '''
-    with open(f'../data/schaefer{parc}.pickle', 'rb') as f:
+    with open(f'../data/schaefer{parc}_unrelated.pickle', 'rb') as f:
         all_FC = pickle.load(f)
     nSubj = int(all_FC.shape[0] / 16)
     nFCs = int(all_FC.shape[0])
@@ -288,9 +288,9 @@ if __name__ == '__main__':
     else:
         print("No GPU detected. Will use CPU for training.")
     hidden_dict = {100: 1200, 200: 5292, 300: 13068, 400: 23232, 500: 36300}
-    for parc in [300]:
+    for parc in [100, 200, 300, 400]:
         print(f'Using Schaefer{parc} parcellation')
-        reference_mats = ['raw fc']
+        reference_mats = ['raw fc', 'pca', 'euclid']
         for ref in reference_mats:
             # Navigate tree and get raw correlation FC matrices
             print("Importing all correlation matrices...", end=" ")
@@ -327,7 +327,7 @@ if __name__ == '__main__':
                 print(
                     f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
             # Write to dataframe and to csv
-            filename = f'../results/CNN_schaefer{parc}_{ref}.csv'
+            filename = f'../results/CNN_schaefer{parc}_{ref}_unrelated.csv'
             results = pd.DataFrame.from_dict(
                 all_acc, orient='index', columns=['Accuracy'])
             results["Loss"] = pd.Series(all_loss)
