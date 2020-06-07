@@ -342,39 +342,41 @@ if __name__ == '__main__':
         print("No GPU detected. Will use CPU for training.")
 
     # Tangent space regularization
-    reference_mats = ['euclid'] #, 'logeuclid', 'kullback_sym', 'harmonic',
+    reference_mats = ['raw', 'euclid'] #, 'logeuclid', 'kullback_sym', 'harmonic',
                      # 'riemann']
-    for ref in reference_mats:
-        # Navigate tree and get raw correlation FC matrices
-        print("Importing all correlation matrices...", end=" ")
-        all_FC, nSubj = get_data('schaefer')
-        print("All FCs successfully loaded!\n")
+    for parcellation in ['glasser', 'schaefer']:
+        for ref in reference_mats:
+            # Navigate tree and get raw correlation FC matrices
+            print("Importing all correlation matrices...", end=" ")
+            all_FC, nSubj = get_data('schaefer')
+            print("All FCs successfully loaded!\n")
 
-        print(f"Using {ref} reference in tangent space!")
-        all_FC = tangential(all_FC, ref)
-        replicates = np.arange(1, 2)
-        all_acc, all_loss = {}, {}
-        # Prepare train, validation, and test data for NN
-        print("Preparing data for CNN...", end=" ")
-        train_loader, val_loader, test_loader = prepare_data(
-            all_FC, nSubj)
-        print("done!\n")
-        # Max epochs of training, early stopping threshold, learning rate
-        max_epochs, n_epochs_stop, lr = 200, 3, 0.001
-        # Loop over iterations of the model
-        for rep in replicates:
-            model, loss_fn, opt, history = build_model(lr)
-            print(f"Now training model {rep} of {replicates[-1]}...")
-            model, history = train_model(model, opt, loss_fn, train_loader,
-                                         val_loader, max_epochs, n_epochs_stop,
-                                         history)
-            accuracy = test_model(model, test_loader)
-            all_acc[rep] = accuracy
-            all_loss[rep] = min(history['val_loss'])
-            print(f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
-        # Write to dataframe and to csv
-        #filename = f'../results/HCP100_Tan{ref}_PCA_NA.csv'
-        #results = pd.DataFrame.from_dict(
-        #    all_acc, orient='index', columns=['Accuracy'])
-        #results["Loss"] = pd.Series(all_loss)
-        #results.to_csv(filename)
+            print(f"Using {ref} reference in tangent space!")
+            if =='euclid':
+                all_FC = tangential(all_FC, ref)
+            replicates = np.arange(1, 2)
+            all_acc, all_loss = {}, {}
+            # Prepare train, validation, and test data for NN
+            print("Preparing data for CNN...", end=" ")
+            train_loader, val_loader, test_loader = prepare_data(
+                all_FC, nSubj)
+            print("done!\n")
+            # Max epochs of training, early stopping threshold, learning rate
+            max_epochs, n_epochs_stop, lr = 200, 3, 0.001
+            # Loop over iterations of the model
+            for rep in replicates:
+                model, loss_fn, opt, history = build_model(lr)
+                print(f"Now training model {rep} of {replicates[-1]}...")
+                model, history = train_model(model, opt, loss_fn, train_loader,
+                                             val_loader, max_epochs, n_epochs_stop,
+                                             history)
+                accuracy = test_model(model, test_loader)
+                all_acc[rep] = accuracy
+                all_loss[rep] = min(history['val_loss'])
+                print(f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
+            # Write to dataframe and to csv
+            filename = f'../results/{parcellation}_{ref}.csv'
+            results = pd.DataFrame.from_dict(
+               all_acc, orient='index', columns=['Accuracy'])
+            results["Loss"] = pd.Series(all_loss)
+            results.to_csv(filename)
