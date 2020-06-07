@@ -3,6 +3,7 @@ import pandas as pd
 import scipy
 import scipy.io as sio
 import torch
+import pickle
 from torch import nn, optim
 from torch.utils import data
 from pyriemann.utils.mean import mean_covariance
@@ -14,13 +15,13 @@ np.seterr(divide='ignore', invalid='ignore')
 
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, nHidden):
         super(Net, self).__init__()
         self.conv1 = nn.Conv2d(1, 6, kernel_size=5)
         self.conv2 = nn.Conv2d(6, 12, kernel_size=5)
         self.conv2_bn = nn.BatchNorm2d(12)
         self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(18252, 128)
+        self.fc1 = nn.Linear(nHidden, 128)
         self.fc2 = nn.Linear(128, 8)
 
     def forward(self, x):
@@ -39,54 +40,59 @@ class Net(nn.Module):
         return num_features
 
 
-def get_data():
+def get_data(data, parc=300):
     '''
     Navigates through file tree and extracts FCs with optional reconstruction
     '''
-    # Yeo ordering
-    fname = '../data/100_unrelated.csv'
-    yeo = True
-    if yeo:
-        yeo_order = list(sio.loadmat("../data/yeo_RS7_N374.mat",
-                                     squeeze_me=True,
-                                     struct_as_record=False)['yeoOrder'] - 1)
-    # Load subject ID and task names
-    subjectids = np.loadtxt(fname, dtype=np.int)
-    nSubj = len(subjectids)
-    tasks = ['rfMRI_REST1_LR', 'rfMRI_REST1_RL', 'rfMRI_REST2_LR',
-             'rfMRI_REST2_RL', 'tfMRI_EMOTION_LR', 'tfMRI_EMOTION_RL',
-             'tfMRI_GAMBLING_LR', 'tfMRI_GAMBLING_RL', 'tfMRI_LANGUAGE_LR',
-             'tfMRI_LANGUAGE_RL', 'tfMRI_MOTOR_LR', 'tfMRI_MOTOR_RL',
-             'tfMRI_RELATIONAL_LR', 'tfMRI_RELATIONAL_RL', 'tfMRI_SOCIAL_LR',
-             'tfMRI_SOCIAL_RL', 'tfMRI_WM_LR', 'tfMRI_WM_RL']
-    M = {}
-    # Walk through file tree and extract FCs
-    for task in tasks:
-        masterFC_dir = '../data/results_SIFT2'
-        restingstatename = 'fMRI/' + task + '/FC/FC_glasser_subc_GS_bp_z.mat'
-        task_matrices = []
-        for subject in subjectids:
-            filename = masterFC_dir + '/' + \
-                str(subject) + '/' + restingstatename
-            mat = sio.loadmat(filename, squeeze_me=True,
-                              struct_as_record=False)
-            A_orig = mat['FC']
-            if yeo:
-                A_orig = A_orig[np.ix_(yeo_order, yeo_order)]
-            np.fill_diagonal(A_orig, 1)
-            task_matrices.append(A_orig)
-        M[task] = np.array(task_matrices)
-    test = np.concatenate((M['rfMRI_REST1_LR'], M['tfMRI_EMOTION_LR'],
-                           M['tfMRI_GAMBLING_LR'], M['tfMRI_LANGUAGE_LR'],
-                           M['tfMRI_MOTOR_LR'], M['tfMRI_RELATIONAL_LR'],
-                           M['tfMRI_SOCIAL_LR'], M['tfMRI_WM_LR']))
-    retest = np.concatenate((M['rfMRI_REST1_RL'], M['tfMRI_EMOTION_RL'],
-                             M['tfMRI_GAMBLING_RL'], M['tfMRI_LANGUAGE_RL'],
-                             M['tfMRI_MOTOR_RL'], M['tfMRI_RELATIONAL_RL'],
-                             M['tfMRI_SOCIAL_RL'], M['tfMRI_WM_RL']))
-    del M
-    all_FC = np.float32(np.concatenate((test, retest)))
-    del test, retest
+    if data.lower() == 'glasser':
+        # Yeo ordering
+        fname = '../data/100_unrelated.csv'
+        yeo = True
+        if yeo:
+            yeo_order = list(sio.loadmat("../data/yeo_RS7_N374.mat",
+                                         squeeze_me=True,
+                                         struct_as_record=False)['yeoOrder'] - 1)
+        # Load subject ID and task names
+        subjectids = np.loadtxt(fname, dtype=np.int)
+        nSubj = len(subjectids)
+        tasks = ['rfMRI_REST1_LR', 'rfMRI_REST1_RL', 'rfMRI_REST2_LR',
+                 'rfMRI_REST2_RL', 'tfMRI_EMOTION_LR', 'tfMRI_EMOTION_RL',
+                 'tfMRI_GAMBLING_LR', 'tfMRI_GAMBLING_RL', 'tfMRI_LANGUAGE_LR',
+                 'tfMRI_LANGUAGE_RL', 'tfMRI_MOTOR_LR', 'tfMRI_MOTOR_RL',
+                 'tfMRI_RELATIONAL_LR', 'tfMRI_RELATIONAL_RL', 'tfMRI_SOCIAL_LR',
+                 'tfMRI_SOCIAL_RL', 'tfMRI_WM_LR', 'tfMRI_WM_RL']
+        M = {}
+        # Walk through file tree and extract FCs
+        for task in tasks:
+            masterFC_dir = '../data/results_SIFT2'
+            restingstatename = 'fMRI/' + task + '/FC/FC_glasser_subc_GS_bp_z.mat'
+            task_matrices = []
+            for subject in subjectids:
+                filename = masterFC_dir + '/' + \
+                    str(subject) + '/' + restingstatename
+                mat = sio.loadmat(filename, squeeze_me=True,
+                                  struct_as_record=False)
+                A_orig = mat['FC']
+                if yeo:
+                    A_orig = A_orig[np.ix_(yeo_order, yeo_order)]
+                np.fill_diagonal(A_orig, 1)
+                task_matrices.append(A_orig)
+            M[task] = np.array(task_matrices)
+        test = np.concatenate((M['rfMRI_REST1_LR'], M['tfMRI_EMOTION_LR'],
+                               M['tfMRI_GAMBLING_LR'], M['tfMRI_LANGUAGE_LR'],
+                               M['tfMRI_MOTOR_LR'], M['tfMRI_RELATIONAL_LR'],
+                               M['tfMRI_SOCIAL_LR'], M['tfMRI_WM_LR']))
+        retest = np.concatenate((M['rfMRI_REST1_RL'], M['tfMRI_EMOTION_RL'],
+                                 M['tfMRI_GAMBLING_RL'], M['tfMRI_LANGUAGE_RL'],
+                                 M['tfMRI_MOTOR_RL'], M['tfMRI_RELATIONAL_RL'],
+                                 M['tfMRI_SOCIAL_RL'], M['tfMRI_WM_RL']))
+        del M
+        all_FC = np.float32(np.concatenate((test, retest)))
+        del test, retest
+    elif data.lower() == 'schaefer':
+        with open(f'../data/schaefer{parc}.pickle', 'rb') as f:
+            all_FC = pickle.load(f)
+        nSubj = int(all_FC.shape[0]/16)
     return all_FC, nSubj
 
 
@@ -180,12 +186,13 @@ def prepare_data(all_FC, nSubj):
     return train_loader, val_loader, test_loader
 
 
-def build_model(lr):
+def build_model(lr, parc=300):
     '''
     Given layer sizes and learning rate, builds model.
     Can change NN architecture here directly in nn.Sequential
     '''
-    model = Net()
+    hidden_dict = {100: 1200, 200: 5292, 300: 13068, 400: 23232, 500: 36300}
+    model = Net(hidden_dict[parc])
     if use_cuda:
         model = model.cuda()
     loss_fn = nn.CrossEntropyLoss()
@@ -340,7 +347,7 @@ if __name__ == '__main__':
     for ref in reference_mats:
         # Navigate tree and get raw correlation FC matrices
         print("Importing all correlation matrices...", end=" ")
-        all_FC, nSubj = get_data()
+        all_FC, nSubj = get_data('schaefer')
         print("All FCs successfully loaded!\n")
 
         print(f"Using {ref} reference in tangent space!")
