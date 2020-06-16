@@ -352,7 +352,7 @@ if __name__ == '__main__':
             print("All FCs successfully loaded!\n")
 
             print(f"Using {ref} reference in tangent space!")
-            if =='euclid':
+            if ref =='euclid':
                 all_FC = tangential(all_FC, ref)
             replicates = np.arange(1, 2)
             all_acc, all_loss = {}, {}
