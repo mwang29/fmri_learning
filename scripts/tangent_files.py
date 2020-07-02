@@ -84,6 +84,12 @@ def get_schaefer(parc):
     return all_FC, nSubj
 
 
+def get_twins(parc, task, twin='DZ'):
+    with open(f'../data/twins/FCs/{task}/{twin}_{parc}.pickle', 'rb') as f:
+        all_FC = pickle.load(f)
+    return all_FC
+
+
 def q1invm(q1, eig_thresh=0):
     q1 += np.eye(q1.shape[0])
     U, S, V = scipy.linalg.svd(q1)
@@ -135,12 +141,37 @@ def pca_recon(FC, pctComp=None):
 
 if __name__ == '__main__':
     warnings.filterwarnings("ignore")
-    for parc in np.arange(100, 400, 100):
+    parcellation = input('Parcellation: ')
+    if parcellation.lower() == 'schaefer':
+        for parc in np.arange(100, 400, 100):
+            for ref in ['euclid', 'riemann', 'kullback_sym', 'harmonic', 'logeuclid']:
+                print(f'{parc}:{ref}')
+                # Navigate tree and get raw correlation FC matrices
+                all_FC, nSubj = get_schaefer(parc)
+                print("All FCs successfully loaded!\n")
+                tangent_FCs = tangential(all_FC, ref)
+                with open(f'../data/tangent_fcs/schaefer{parc}_{ref}.pickle', 'wb') as f:
+                    pickle.dump(tangent_FCs, f, protocol=4)
+    elif parcellation.lower() == 'glasser':
         for ref in ['euclid', 'riemann', 'kullback_sym', 'harmonic', 'logeuclid']:
-            print(f'{parc}:{ref}')
+            print(ref)
             # Navigate tree and get raw correlation FC matrices
-            all_FC, nSubj = get_schaefer(parc)
+            all_FC, nSubj = get_glasser()
             print("All FCs successfully loaded!\n")
             tangent_FCs = tangential(all_FC, ref)
-            with open(f'../data/tangent_fcs/schaefer{parc}_{ref}.pickle', 'wb') as f:
+            with open(f'../data/tangent_fcs/glasser_{ref}.pickle', 'wb') as f:
                 pickle.dump(tangent_FCs, f, protocol=4)
+    elif parcellation.lower() == 'twins':
+        for ref in ['euclid']:
+            print(f'Using {ref} reference')
+            for parc in np.arange(100, 200, 100):
+                print(f'{parc} Region Parcellation')
+                for twin in ['DZ']:
+                    for task in ['rest', 'emotion', 'gambling', 'language', 'motor', 'relational', 'social', 'wm']:
+                        task_FC = get_twins(parc, task, twin)
+                        tangent_FCs = tangential(task_FC, ref)
+                        with open(f'../data/tangent_fcs/twins/{task}/{twin}_{parc}_{ref}.pickle', 'wb') as f:
+                            pickle.dump(tangent_FCs, f, protocol=4)
+        pass
+    else:
+        print("Error: Choose 'Glasser' or 'Schaefer'.\n")
