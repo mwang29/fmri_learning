@@ -294,16 +294,9 @@ if __name__ == '__main__':
         for ref in reference_mats:
             # Navigate tree and get raw correlation FC matrices
             print("Importing all correlation matrices...", end=" ")
-            all_FC, nSubj, nFCs = get_data(parc)
+            with open(f'../data/tangent_fcs/schaefer/schaefer{parc}_{ref}.pickle', 'rb') as f:
+                all_FC = pickle.load(f)
             print("All FCs successfully loaded!\n")
-            if ref == 'pca':
-                all_FC = pca_recon(all_FC, 0.5)
-                print(f"Using {ref} reconstruction!")
-            elif ref != 'raw fc':
-                print(f"Using {ref} reference in tangent space!")
-                all_FC = tangential(all_FC, ref)
-            else:
-                pass
             replicates = np.arange(1, 21)
             all_acc, all_loss = {}, {}
             # Prepare train, validation, and test data for NN
@@ -327,7 +320,7 @@ if __name__ == '__main__':
                 print(
                     f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
             # Write to dataframe and to csv
-            filename = f'../results/CNN_schaefer{parc}_{ref}_unrelated.csv'
+            filename = f'../results/tasks/CNN_schaefer{parc}_{ref}_unrelated.csv'
             results = pd.DataFrame.from_dict(
                 all_acc, orient='index', columns=['Accuracy'])
             results["Loss"] = pd.Series(all_loss)
