@@ -39,11 +39,11 @@ class Net(nn.Module):
         return num_features
 
 
-def get_data(parc):
+def get_data(parc, ref):
     '''
     Navigates through file tree and extracts FCs with optional reconstruction
     '''
-    with open(f'../data/schaefer{parc}_unrelated.pickle', 'rb') as f:
+    with open(f'../data/tangent_fcs/schaefer/schaefer{parc}_{ref}.pickle', 'rb') as f:
         all_FC = pickle.load(f)
     nSubj = int(all_FC.shape[0] / 16)
     nFCs = int(all_FC.shape[0])
@@ -287,15 +287,14 @@ if __name__ == '__main__':
         benchmark = True
     else:
         print("No GPU detected. Will use CPU for training.")
-    hidden_dict = {100: 1200, 200: 5292, 300: 13068, 400: 23232, 500: 36300}
-    for parc in [100, 200, 300, 400]:
+    hidden_dict = {100: 1200, 200: 5808, 300: 13068, 400: 23232, 500: 36300}
+    for parc in [300]:
         print(f'Using Schaefer{parc} parcellation')
-        reference_mats = ['euclid', 'harmonic', 'logeuclid', 'kullback_sym', 'riemann']:
+        reference_mats = ['euclid', 'harmonic', 'logeuclid', 'kullback_sym', 'riemann']
         for ref in reference_mats:
             # Navigate tree and get raw correlation FC matrices
             print("Importing all correlation matrices...", end=" ")
-            with open(f'../data/tangent_fcs/schaefer/schaefer{parc}_{ref}.pickle', 'rb') as f:
-                all_FC = pickle.load(f)
+            all_FC, nSubj, nFCs = get_data(parc, ref)
             print("All FCs successfully loaded!\n")
             replicates = np.arange(1, 21)
             all_acc, all_loss = {}, {}
@@ -320,7 +319,7 @@ if __name__ == '__main__':
                 print(
                     f'Model {rep} - Accuracy: {accuracy}; Loss: {all_loss[rep]}')
             # Write to dataframe and to csv
-            filename = f'../results/tasks/CNN_schaefer{parc}_{ref}_unrelated.csv'
+            filename = f'../results/tasks/CNN_schaefer{parc}_{ref}.csv'
             results = pd.DataFrame.from_dict(
                 all_acc, orient='index', columns=['Accuracy'])
             results["Loss"] = pd.Series(all_loss)
