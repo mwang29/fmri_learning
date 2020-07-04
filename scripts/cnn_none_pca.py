@@ -39,12 +39,16 @@ class Net(nn.Module):
         return num_features
 
 
-def get_data(parc, ref):
+def get_data(parc, ref='none'):
     '''
     Navigates through file tree and extracts FCs with optional reconstruction
     '''
-    with open(f'../data/tangent_fcs/schaefer/schaefer{parc}_{ref}.pickle', 'rb') as f:
-        all_FC = pickle.load(f)
+    if ref == 'none':
+        with open(f'../data/schaefer/schaefer{parc}.pickle', 'rb') as f:
+            all_FC = pickle.load(f)
+    else:
+        with open(f'../data/tangent_fcs/schaefer/schaefer{parc}_{ref}.pickle', 'rb') as f:
+            all_FC = pickle.load(f)
     nSubj = int(all_FC.shape[0] / 16)
     nFCs = int(all_FC.shape[0])
     return all_FC, nSubj, nFCs
@@ -288,7 +292,8 @@ if __name__ == '__main__':
     else:
         print("No GPU detected. Will use CPU for training.")
     hidden_dict = {100: 1200, 200: 5808, 300: 13068, 400: 23232, 500: 36300}
-    for ref = ['none', 'pca']
+    parc = 100
+    for ref in ['none', 'pca']:
         print(f'Using Schaefer{parc} parcellation')
         # Navigate tree and get raw correlation FC matrices
         print("Importing all correlation matrices...", end=" ")
