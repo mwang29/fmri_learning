@@ -1,0 +1,8 @@
+PP,Mean,Std
+Original,0.926,0.006
+PCA,0.945,0.003
+Euclidean,0.973,0.004
+Harmonic,0.986,0.003
+LogEuclid,0.952,0.003
+Kullback,0.953,0.005
+Riemann,0.947,0.004
