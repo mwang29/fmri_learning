@@ -15,11 +15,8 @@ import h5py
 # Disable
 
 def utri2mat(utri):
-    '''
-    Converts upper triangular back to matrix form and fills in main diagonal with 1s
-    '''
     n = int(-1 + np.sqrt(1 + 8 * len(utri))) // 2
-    iu1 = np.triu_indices(n+1,1)
+    iu1 = np.tril_indices(n+1,-1)
     ret = np.empty((n+1, n+1))
     ret[iu1] = utri
     ret.T[iu1] = utri
@@ -191,7 +188,7 @@ if __name__ == '__main__':
             with open(f'../data/tangent_fcs/glasser_{ref}.pickle', 'wb') as f:
                 pickle.dump(tangent_FCs, f, protocol=4)
     elif parcellation.lower() == 'twins':
-        for ref in ['logeuclid']:
+        for ref in ['riemann', 'kullback_sym', 'harmonic', 'logeuclid']:
             print(f'Using {ref} reference')
             for parc in np.arange(100, 500, 100):
                 print(f'{parc} Region Parcellation')
