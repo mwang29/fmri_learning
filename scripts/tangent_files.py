@@ -5,13 +5,26 @@ import pickle
 from scipy import linalg
 import scipy.io as sio
 from pyriemann.utils.mean import mean_covariance
+from pyriemann.estimation import Covariances
 import sklearn.datasets
 import sklearn.decomposition
 import sys
 import os
+import h5py
 
 # Disable
 
+def utri2mat(utri):
+    '''
+    Converts upper triangular back to matrix form and fills in main diagonal with 1s
+    '''
+    n = int(-1 + np.sqrt(1 + 8 * len(utri))) // 2
+    iu1 = np.triu_indices(n+1,1)
+    ret = np.empty((n+1, n+1))
+    ret[iu1] = utri
+    ret.T[iu1] = utri
+    np.fill_diagonal(ret, 1)
+    return ret
 
 def blockPrint():
     sys.stdout = open(os.devnull, 'w')
@@ -84,10 +97,26 @@ def get_schaefer(parc):
     return all_FC, nSubj
 
 
-def get_twins(parc, task, twin='DZ'):
-    with open(f'../data/twins/FCs/{task}/{twin}_{parc}.pickle', 'rb') as f:
-        all_FC = pickle.load(f)
-    return all_FC
+def get_twins(parc, twin='DZ'):
+    '''
+    Navigates through file tree and extracts test/retest FCs 
+    '''
+    master_dir = '../data/twins'
+    tasks = ['rest', 'emotion', 'gambling', 'language', 'motor', 'relational', 'social', 'wm']
+    FC, test, retest = {}, {}, {}
+    for task in tasks:
+        task_dir = master_dir + f'/{task.upper()}/origmat_{twin}_schaefer{parc}_tests.mat'
+        f = h5py.File(task_dir, 'r')
+        for k, v in f.items():
+            test[task] = np.array(v)
+        task_dir = master_dir + f'/{task.upper()}/origmat_{twin}_schaefer{parc}_retests.mat'
+        f = h5py.File(task_dir, 'r')
+        for k, v in f.items():
+            retest[task] = np.array(v)
+        FC[task] = np.concatenate((test[task], retest[task])) 
+    return FC
+
+
 
 
 def q1invm(q1, eig_thresh=0):
@@ -113,7 +142,7 @@ def tangential(all_FC, ref):
     for idx, fc in enumerate(Q):
         if idx % 100 == 0:
             print(f'{idx}/{Q.shape[0]}')
-        blockPrint()
+
         tangent_FC[idx] = linalg.logm(fc)
         enablePrint()
     return tangent_FC
@@ -162,15 +191,18 @@ if __name__ == '__main__':
             with open(f'../data/tangent_fcs/glasser_{ref}.pickle', 'wb') as f:
                 pickle.dump(tangent_FCs, f, protocol=4)
     elif parcellation.lower() == 'twins':
-        for ref in ['euclid']:
+        for ref in ['logeuclid']:
             print(f'Using {ref} reference')
-            for parc in np.arange(100, 200, 100):
+            for parc in np.arange(100, 500, 100):
                 print(f'{parc} Region Parcellation')
-                for twin in ['DZ']:
+                for twin in ['DZ', 'MZ']:
+                    FCs = get_twins(parc, twin)
                     for task in ['rest', 'emotion', 'gambling', 'language', 'motor', 'relational', 'social', 'wm']:
-                        task_FC = get_twins(parc, task, twin)
-                        tangent_FCs = tangential(task_FC, ref)
-                        with open(f'../data/tangent_fcs/twins/{task}/{twin}_{parc}_{ref}.pickle', 'wb') as f:
+                        FC = np.zeros((FCs[task].shape[0], parc+14, parc+14))
+                        for idx, utri in enumerate(FCs[task]):
+                            FC[idx] = utri2mat(utri)
+                        tangent_FCs = tangential(FC, ref)
+                        with open(f'../data/tangent_fcs/twins/{task}/{parc}_{twin}_{ref}.pickle', 'wb') as f:
                             pickle.dump(tangent_FCs, f, protocol=4)
         pass
     else:
