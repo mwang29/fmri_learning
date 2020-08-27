@@ -18,5 +18,5 @@ Scripts - Main jupyter notebook files of task, twin, and subject identification.
 
 Results - Visualization notebooks with Manuscript_figures and Data_Visualizations. Outputs are stored in subfolders corresponding to task, subject, or twins. 
 
-Email michael20995@gmail.com with any questions. Thanks.
+Email michael20995@gmail.com with any questions.
 
