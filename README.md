@@ -1,7 +1,7 @@
 # Optimizing predictive power of functional connectivity data with tangent spaces and convolutional neural networks
 The aim of this research is to use tangent space projection to increase the predictive power of functional connectivity data in subject, task, and twin identification. 
 
-![alt text](/results/tasks/CNN_all.eps?raw=true)
+![alt text](/results/tasks/CNN_all.png?raw=true)
 ![alt text](/results/tangent_fcs/schaefer100_rest_subj1.png?raw=true)
 
 To setup a conda virtual environment from the requirements.txt file, use
