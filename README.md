@@ -1,4 +1,4 @@
-# fmri_learning
+# Optimizing predictive power of functional connectivity data with tangent spaces and convolutional neural networks
 The aim of this research is to experiment with tangent space projection to increase predictive power and identifiability of functional connectivity data. 
 
 To setup a conda virtual environment from the requirements.txt file, use
