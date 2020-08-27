@@ -1,5 +1,5 @@
 # Optimizing predictive power of functional connectivity data with tangent spaces and convolutional neural networks
-The aim of this research is to experiment with tangent space projection to increase predictive power and identifiability of functional connectivity data. 
+The aim of this research is to use tangent space projection to increase the predictive power of functional connectivity data in subject, task, and twin identification. 
 
 ![alt text](/results/tangent_fcs/schaefer100_rest_subj1.png?raw=true)
 
